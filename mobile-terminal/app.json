@@ -1,0 +1,39 @@
+{
+  "expo": {
+    "name": "mobile-terminal",
+    "slug": "mobile-terminal",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "icon": "./assets/icon.png",
+    "userInterfaceStyle": "light",
+    "ios": {
+      "supportsTablet": true,
+      "bundleIdentifier": "com.mts.mobileterminal",
+      "buildNumber": "1"
+    },
+    "android": {
+      "package": "com.mts.mobileterminal",
+      "versionCode": 1,
+      "adaptiveIcon": {
+        "backgroundColor": "#E6F4FE",
+        "foregroundImage": "./assets/android-icon-foreground.png",
+        "backgroundImage": "./assets/android-icon-background.png",
+        "monochromeImage": "./assets/android-icon-monochrome.png"
+      }
+    },
+    "scheme": "mts-mobile",
+    "web": {
+      "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-router",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Allow MTS to access your camera to scan material barcodes."
+        }
+      ],
+      "expo-secure-store"
+    ]
+  }
+}

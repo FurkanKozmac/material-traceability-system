@@ -1,0 +1,60 @@
+services:
+  db:
+    image: postgres:16-alpine
+    container_name: mts-postgres-db
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-mts_db}
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - mts_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-postgres} -d ${POSTGRES_DB:-mts_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    networks:
+      - mts-network
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: mts-dotnet-backend
+    restart: unless-stopped
+    environment:
+      ConnectionStrings__DefaultConnection: "Host=db;Port=5432;Database=${POSTGRES_DB:-mts_db};Username=${POSTGRES_USER:-postgres};Password=${POSTGRES_PASSWORD:-postgres}"
+      Jwt__Key: "${JWT_KEY:-MTS-DEVELOPMENT-ONLY-KEY-2026-NEVER-USE-IN-PRODUCTION-64-CHARS}"
+      Jwt__Issuer: "${JWT_ISSUER:-MaterialTraceabilitySystem}"
+      Jwt__Audience: "${JWT_AUDIENCE:-MtsClients}"
+    ports:
+      - "${BACKEND_PORT:-5059}:5059"
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - mts-network
+
+  web-portal:
+    build:
+      context: ./web-portal
+      dockerfile: Dockerfile
+    container_name: mts-web-portal
+    restart: unless-stopped
+    ports:
+      - "${WEB_PORTAL_PORT:-80}:80"
+    depends_on:
+      - backend
+    networks:
+      - mts-network
+
+volumes:
+  mts_postgres_data:
+    driver: local
+
+networks:
+  mts-network:
+    driver: bridge
