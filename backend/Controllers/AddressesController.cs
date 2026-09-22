@@ -15,7 +15,7 @@ public class AddressesController(IAddressService addressService) : ControllerBas
         [FromQuery] int? page,
         [FromQuery] int? size,
         CancellationToken ct) =>
-        Ok(await addressService.GetAllAsync(ct));
+        Ok(await addressService.GetAllAsync(page ?? 1, size ?? 20, ct));
 
     [HttpGet("{id:long}")]
     public async Task<ActionResult<AddressResponse>> GetById(long id, CancellationToken ct)

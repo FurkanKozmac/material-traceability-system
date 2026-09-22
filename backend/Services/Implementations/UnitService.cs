@@ -67,11 +67,18 @@ public class UnitService(MtsDbContext context) : IUnitService
             .FirstOrDefaultAsync(ct);
     }
     
-    public async Task<List<UnitResponse>> GetByAddressIdAsync(long addressId, CancellationToken ct = default)
+    public async Task<PagedResult<UnitResponse>> GetByAddressIdAsync(long addressId, int page = 1, int pageSize = 50, CancellationToken ct = default)
     {
-        return await context.Units
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 500);
+        var query = context.Units
             .AsNoTracking()
-            .Where(u => u.AddressId == addressId)
+            .Where(u => u.AddressId == addressId);
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .OrderByDescending(u => u.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(u => new UnitResponse(
                 u.Id,
                 u.Barcode,
@@ -86,6 +93,7 @@ public class UnitService(MtsDbContext context) : IUnitService
                 u.Batch.ExpirationDate.HasValue && u.Batch.ExpirationDate.Value < DateTime.UtcNow
             ))
             .ToListAsync(ct);
+        return new PagedResult<UnitResponse>(items, totalCount, page, pageSize);
     }
     
     public async Task<UnitResponse> CreateAsync(CreateUnitRequest request, CancellationToken ct = default)
@@ -97,6 +105,31 @@ public class UnitService(MtsDbContext context) : IUnitService
         var batchExists = await context.Batches.AnyAsync(b => b.Id == request.BatchId, ct);
         if (!batchExists)
             throw new InvalidOperationException("Belirtilen parti (Batch) bulunamadı!");
+
+        if (request.AddressId.HasValue)
+        {
+            var placement = await context.Addresses
+                .Where(a => a.Id == request.AddressId.Value)
+                .Select(a => new
+                {
+                    a.Id,
+                    a.StorageType,
+                    a.MaxCapacity,
+                    Occupancy = a.Units.Count(u => u.Status == "InStock" || u.Status == "AVAILABLE")
+                })
+                .FirstOrDefaultAsync(ct);
+            if (placement is null)
+                throw new InvalidOperationException("Belirtilen raf bulunamadı!");
+
+            var chemicalStorageType = await context.Batches
+                .Where(b => b.Id == request.BatchId)
+                .Select(b => b.Chemical.StorageType)
+                .FirstAsync(ct);
+            if (!string.Equals(placement.StorageType, chemicalStorageType, StringComparison.OrdinalIgnoreCase))
+                throw new BusinessRuleException("Birim, kimyasalın depolama türüyle uyumsuz bir rafa yerleştirilemez.");
+            if (placement.MaxCapacity.HasValue && placement.Occupancy >= placement.MaxCapacity.Value)
+                throw new BusinessRuleException("Raf kapasitesi dolu.");
+        }
 
         var unit = new Unit
         {
@@ -148,7 +181,14 @@ public class UnitService(MtsDbContext context) : IUnitService
         unit.AddressId = null;
         unit.Version++;
 
-        await context.SaveChangesAsync(ct);
+        try
+        {
+            await context.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateConcurrencyException)
+        {
+            throw new BusinessRuleException("Stok birimi başka bir işlem tarafından tüketildi. Lütfen tekrar taramayın.");
+        }
         return (await GetByBarcodeAsync(unit.Barcode, ct))!;
     }
 }

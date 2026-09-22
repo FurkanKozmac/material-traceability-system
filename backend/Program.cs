@@ -1,5 +1,7 @@
 using System.Text.Json.Serialization;
 using System.Text;
+using System.Net;
+using System.Threading.RateLimiting;
 using backend.Data;
 using backend.Entities;
 using backend.Middlewares;
@@ -11,6 +13,7 @@ using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
+using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -21,18 +24,41 @@ var builder = WebApplication.CreateBuilder(args);
 // CORS: React ve Mobil cihazların çerez/token ile bağlanmasına izin ver
 builder.Services.AddCors(options =>
 {
-    options.AddPolicy("AllowAll", policy =>
+    options.AddPolicy("ClientPolicy", policy =>
     {
-        policy.SetIsOriginAllowed(origin => true)
-              .AllowAnyMethod()
-              .AllowAnyHeader()
-              .AllowCredentials();
+        if (builder.Environment.IsDevelopment())
+        {
+            policy.SetIsOriginAllowed(IsDevelopmentOrigin);
+        }
+        else
+        {
+            var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? [];
+            policy.WithOrigins(allowedOrigins);
+        }
+
+        policy.AllowAnyMethod().AllowAnyHeader().AllowCredentials();
     });
+});
+
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy("login", context => RateLimitPartition.GetFixedWindowLimiter(
+        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+        _ => new FixedWindowRateLimiterOptions
+        {
+            PermitLimit = 5,
+            Window = TimeSpan.FromMinutes(1),
+            QueueLimit = 0,
+            AutoReplenishment = true
+        }));
 });
 
 // PostgreSQL Veritabanı
 builder.Services.AddDbContext<MtsDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
+builder.Services.AddMemoryCache();
+builder.Services.AddHttpContextAccessor();
 
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("Jwt:Key yapılandırılmalıdır.");
@@ -93,8 +119,9 @@ var app = builder.Build();
 // ==========================================
 
 // CORS ve Hata Yakalama EN BAŞTA olmalı!
-app.UseCors("AllowAll");
+app.UseCors("ClientPolicy");
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
 {
@@ -115,3 +142,20 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.Run();
+
+static bool IsDevelopmentOrigin(string origin)
+{
+    if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri) || uri.Scheme is not ("http" or "https"))
+        return false;
+
+    if (uri.Host is "localhost" or "127.0.0.1" or "[::1]")
+        return true;
+
+    if (!IPAddress.TryParse(uri.Host, out var address) || address.AddressFamily != System.Net.Sockets.AddressFamily.InterNetwork)
+        return false;
+
+    var bytes = address.GetAddressBytes();
+    return bytes[0] == 10 ||
+           (bytes[0] == 172 && bytes[1] is >= 16 and <= 31) ||
+           (bytes[0] == 192 && bytes[1] == 168);
+}

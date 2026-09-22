@@ -26,3 +26,5 @@ public record LoginResponse(
 );
 
 public record RefreshTokenRequest([Required] string RefreshToken);
+
+public record LogoutRequest([Required] string RefreshToken);

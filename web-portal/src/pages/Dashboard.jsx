@@ -3,7 +3,7 @@ import { Box, Typography, Grid, Paper, Table, TableBody, TableCell, TableHead, T
 import { Layers, AlertTriangle, CheckCircle, Clock, Info } from 'lucide-react';
 import api from '../api';
 import useWebSocket from '../hooks/useWebSocket';
-import { useLanguage } from '../LanguageContext';
+import { useLanguage } from '../useLanguage';
 
 const StatCard = memo(({ title, value, icon, color, bgColor }) => (
   <Paper sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 2, boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>

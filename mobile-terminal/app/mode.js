@@ -3,9 +3,11 @@ import { SafeAreaView, StyleSheet, Text, TouchableOpacity, View } from 'react-na
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { logout } from '../src/services/api';
+import { useLanguage } from '../src/context/LanguageContext';
 
 export default function ModeSelectionScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [operator, setOperator] = useState('Operatör');
 
   useEffect(() => { AsyncStorage.getItem('operator_name').then((value) => setOperator(value || 'Operatör')); }, []);
@@ -18,20 +20,20 @@ export default function ModeSelectionScreen() {
 
   return <SafeAreaView style={styles.container}>
     <View style={styles.content}>
-      <Text style={styles.session}>Aktif Operatör</Text>
+      <Text style={styles.session}>{t('activeOperator')}</Text>
       <Text style={styles.operator}>{operator}</Text>
-      <Text style={styles.title}>Malzeme Tüketimi</Text>
-      <Text style={styles.subtitle}>QR etiketi okutun veya barkodu elle girerek varil detayını görüntüleyin.</Text>
+      <Text style={styles.title}>{t('materialConsumption')}</Text>
+      <Text style={styles.subtitle}>{t('scanMaterialHelp')}</Text>
       <TouchableOpacity style={styles.scanButton} onPress={() => router.push('/scanner')}>
         <Text style={styles.icon}>▣</Text>
-        <Text style={styles.scanText}>BARKOD OKUT / TÜKET</Text>
+        <Text style={styles.scanText}>{t('scanConsume')}</Text>
       </TouchableOpacity>
       <TouchableOpacity style={styles.relocationButton} onPress={() => router.push('/relocation')}>
         <Text style={styles.icon}>⇄</Text>
-        <Text style={styles.scanText}>RAF TAŞIMA GÖREVLERİ</Text>
+        <Text style={styles.scanText}>{t('relocationTasks')}</Text>
       </TouchableOpacity>
-      <TouchableOpacity style={styles.settingsButton} onPress={() => router.push('/settings')}><Text style={styles.settingsText}>Sunucu Ayarları</Text></TouchableOpacity>
-      <TouchableOpacity style={styles.logoutButton} onPress={endSession}><Text style={styles.logoutText}>Oturumu Kapat</Text></TouchableOpacity>
+      <TouchableOpacity style={styles.settingsButton} onPress={() => router.push('/settings')}><Text style={styles.settingsText}>{t('serverSettingsShort')}</Text></TouchableOpacity>
+      <TouchableOpacity style={styles.logoutButton} onPress={endSession}><Text style={styles.logoutText}>{t('logout')}</Text></TouchableOpacity>
     </View>
   </SafeAreaView>;
 }

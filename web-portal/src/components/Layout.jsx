@@ -4,7 +4,7 @@ import api from '../api';
 import { Box, Typography, Button, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, CssBaseline, Avatar, AppBar, Toolbar, ButtonGroup } from '@mui/material';
 import { Dashboard as DashboardIcon, Science, Inventory2, LocationOn, Sell, QrCode2, SwapHoriz, ExitToApp } from '@mui/icons-material';
 import { getStoredUser } from '../auth';
-import { useLanguage } from '../LanguageContext';
+import { useLanguage } from '../useLanguage';
 
 const drawerWidth = 280;
 
@@ -26,13 +26,16 @@ export default function Layout() {
   ];
 
   const handleLogout = async () => {
+    const storedUser = getStoredUser();
     try {
-      await api.post('/auth/logout-web');
-    } catch (e) {
-      console.error('Logout failed', e);
+      if (storedUser?.refreshToken) {
+        await api.post('/auth/logout', { refreshToken: storedUser.refreshToken });
+      }
+    } catch {
+    } finally {
+      localStorage.removeItem('user');
+      navigate('/login');
     }
-    localStorage.removeItem('user');
-    navigate('/login');
   };
 
   const activeItem = menuItems.find(item => item.path === activePath);

@@ -1,7 +1,8 @@
 import React from 'react';
 import { Box, Typography, Button } from '@mui/material';
+import { useLanguage } from '../useLanguage';
 
-class ErrorBoundary extends React.Component {
+class ErrorBoundaryView extends React.Component {
   constructor(props) {
     super(props);
     this.state = { hasError: false, error: null };
@@ -20,7 +21,7 @@ class ErrorBoundary extends React.Component {
       return (
         <Box sx={{ p: 4, textAlign: 'center', mt: 10 }}>
           <Typography variant="h4" color="error" gutterBottom>
-            Beklenmeyen bir hata oluştu.
+            {this.props.t('unexpectedError')}
           </Typography>
           <Typography variant="body1" color="text.secondary" sx={{ mb: 3 }}>
             {this.state.error?.toString()}
@@ -29,7 +30,7 @@ class ErrorBoundary extends React.Component {
             variant="contained" 
             onClick={() => window.location.reload()}
           >
-            Sayfayı Yenile
+            {this.props.t('reloadPage')}
           </Button>
         </Box>
       );
@@ -39,4 +40,7 @@ class ErrorBoundary extends React.Component {
   }
 }
 
-export default ErrorBoundary;
+export default function ErrorBoundary(props) {
+  const { t } = useLanguage();
+  return <ErrorBoundaryView {...props} t={t} />;
+}

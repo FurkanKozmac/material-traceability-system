@@ -3,9 +3,11 @@ import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, T
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { completeRelocationTask, listRelocationTasks } from '../src/services/api';
+import { useLanguage } from '../src/context/LanguageContext';
 
 export default function RelocationScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [permission, requestPermission] = useCameraPermissions();
   const [tasks, setTasks] = useState([]);
   const [task, setTask] = useState(null);
@@ -16,7 +18,7 @@ export default function RelocationScreen() {
 
   const load = async () => {
     try { setTasks((await listRelocationTasks()).filter((item) => item.status === 'Pending')); }
-    catch (error) { Alert.alert('Hata', error.message); }
+    catch (error) { Alert.alert(t('moveFailed'), error.message); }
     finally { setLoading(false); }
   };
   useEffect(() => { load(); }, []);
@@ -26,36 +28,36 @@ export default function RelocationScreen() {
     const code = raw.trim();
     if (step === 'unit') {
       if (code.toUpperCase() !== task.unitBarcode.toUpperCase()) {
-        Alert.alert('Yanlış Stok Birimi', `Bu görev için ${task.unitBarcode} okutulmalıdır.`); setScanned(false); return;
+        Alert.alert(t('wrongUnit'), `${t('expectedUnit')}: ${task.unitBarcode}`); setScanned(false); return;
       }
       Vibration.vibrate(100); setStep('address'); setManual(''); setScanned(false); return;
     }
     if (code.toUpperCase() !== `ADR-${task.toAddressCode}`.toUpperCase()) {
-      Alert.alert('Yanlış Hedef Raf', `Beklenen raf etiketi: ADR-${task.toAddressCode}`); setScanned(false); return;
+      Alert.alert(t('wrongRack'), `${t('expectedRack')}: ADR-${task.toAddressCode}`); setScanned(false); return;
     }
     setLoading(true);
     try {
       await completeRelocationTask(task.id, task.unitBarcode, code);
       Vibration.vibrate([0, 100, 50, 100]);
-      Alert.alert('Başarılı', 'Stok birimi hedef rafa taşındı.');
+      Alert.alert(t('success'), t('movedSuccess'));
       setTask(null); setStep('unit'); setManual(''); setScanned(false); await load();
-    } catch (error) { Alert.alert('Taşıma Başarısız', error.message); setScanned(false); }
+    } catch (error) { Alert.alert(t('moveFailed'), error.message); setScanned(false); }
     finally { setLoading(false); }
   };
 
   return <SafeAreaView style={styles.container}><ScrollView contentContainerStyle={styles.content}>
-    <View style={styles.header}><Text style={styles.title}>Raf Taşıma</Text><TouchableOpacity onPress={() => router.back()}><Text style={styles.back}>Geri</Text></TouchableOpacity></View>
-    {!task ? <><Text style={styles.help}>Bir görev seçin. Önce stok birimini, ardından hedef raf QR etiketini okutun.</Text>
+    <View style={styles.header}><Text style={styles.title}>{t('relocation')}</Text><TouchableOpacity onPress={() => router.back()}><Text style={styles.back}>{t('back')}</Text></TouchableOpacity></View>
+    {!task ? <><Text style={styles.help}>{t('selectTaskHelp')}</Text>
       {loading && <ActivityIndicator color="#2563eb" />}
       {tasks.map((item) => <TouchableOpacity key={item.id} style={styles.task} onPress={() => { setTask(item); setStep('unit'); setScanned(false); }}>
         <Text style={styles.taskTitle}>Görev #{item.id} · {item.unitBarcode}</Text><Text style={styles.route}>{item.fromAddressCode}  →  {item.toAddressCode}</Text>
       </TouchableOpacity>)}
-      {!loading && !tasks.length && <Text style={styles.empty}>Bekleyen taşıma görevi yok.</Text>}
+      {!loading && !tasks.length && <Text style={styles.empty}>{t('noPendingTasks')}</Text>}
     </> : <>
-      <View style={styles.active}><Text style={styles.eyebrow}>AKTİF GÖREV #{task.id}</Text><Text style={styles.taskTitle}>{task.unitBarcode}</Text><Text style={styles.route}>{task.fromAddressCode} → {task.toAddressCode}</Text><TouchableOpacity onPress={() => setTask(null)}><Text style={styles.change}>Görevi Değiştir</Text></TouchableOpacity></View>
-      <Text style={styles.step}>{step === 'unit' ? `1/2 · Stok birimini okutun: ${task.unitBarcode}` : `2/2 · Hedef rafı okutun: ADR-${task.toAddressCode}`}</Text>
-      <View style={styles.inputRow}><TextInput style={styles.input} autoCapitalize="characters" value={manual} onChangeText={setManual} placeholder={step === 'unit' ? task.unitBarcode : `ADR-${task.toAddressCode}`} /><TouchableOpacity style={styles.submit} onPress={() => processCode(manual)}><Text style={styles.submitText}>Doğrula</Text></TouchableOpacity></View>
-      {permission?.granted ? <View style={styles.camera}><CameraView style={StyleSheet.absoluteFillObject} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scanned ? undefined : ({ data }) => { setScanned(true); processCode(data); }} /><View style={styles.reticle} /></View> : <TouchableOpacity style={styles.submit} onPress={requestPermission}><Text style={styles.submitText}>Kamerayı Etkinleştir</Text></TouchableOpacity>}
+      <View style={styles.active}><Text style={styles.eyebrow}>{t('activeTask')} #{task.id}</Text><Text style={styles.taskTitle}>{task.unitBarcode}</Text><Text style={styles.route}>{task.fromAddressCode} → {task.toAddressCode}</Text><TouchableOpacity onPress={() => setTask(null)}><Text style={styles.change}>{t('changeTask')}</Text></TouchableOpacity></View>
+      <Text style={styles.step}>{step === 'unit' ? `1/2 · ${t('stepUnit')}: ${task.unitBarcode}` : `2/2 · ${t('stepRack')}: ADR-${task.toAddressCode}`}</Text>
+      <View style={styles.inputRow}><TextInput style={styles.input} autoCapitalize="characters" value={manual} onChangeText={setManual} placeholder={step === 'unit' ? task.unitBarcode : `ADR-${task.toAddressCode}`} /><TouchableOpacity style={styles.submit} onPress={() => processCode(manual)}><Text style={styles.submitText}>{t('verify')}</Text></TouchableOpacity></View>
+      {permission?.granted ? <View style={styles.camera}><CameraView style={StyleSheet.absoluteFillObject} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scanned ? undefined : ({ data }) => { setScanned(true); processCode(data); }} /><View style={styles.reticle} /></View> : <TouchableOpacity style={styles.submit} onPress={requestPermission}><Text style={styles.submitText}>{t('enableCamera')}</Text></TouchableOpacity>}
     </>}
   </ScrollView></SafeAreaView>;
 }

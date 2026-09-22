@@ -2,30 +2,28 @@ import React from 'react';
 import { Box, Button, Typography, Container, Grid, Paper } from '@mui/material';
 import { useNavigate } from 'react-router-dom';
 import { QrCode, Layers, ShieldCheck, Activity, ArrowRight, Truck } from 'lucide-react';
+import { useLanguage } from '../useLanguage';
 
 export default function Landing() {
   const navigate = useNavigate();
+  const { t } = useLanguage();
 
   const features = [
     {
       icon: <QrCode size={40} color="#2563eb" />,
-      title: 'QR Barkod Takibi',
-      description: 'Malzemelerin konum ve durum bilgilerini QR barkodlar ile anlık olarak izleyin.'
+      title: t('featureQr'), description: t('featureQrDesc')
     },
     {
       icon: <Layers size={40} color="#16a34a" />,
-      title: 'Anlık Stok Yönetimi',
-      description: 'Stok seviyelerini, tüketilen birimleri ve son kullanma tarihlerini kolayca yönetin.'
+      title: t('featureStock'), description: t('featureStockDesc')
     },
     {
       icon: <ShieldCheck size={40} color="#ea580c" />,
-      title: 'Kurumsal Güvenlik',
-      description: 'Rol tabanlı erişim kontrolü ve güvenli oturum yönetimiyle korunan çalışma ortamı.'
+      title: t('featureSecurity'), description: t('featureSecurityDesc')
     },
     {
       icon: <Activity size={40} color="#9333ea" />,
-      title: 'Operasyonel İçgörüler',
-      description: 'Malzeme tüketim eğilimlerini ve kritik stok hareketlerini tek ekrandan değerlendirin.'
+      title: t('featureInsights'), description: t('featureInsightsDesc')
     },
   ];
 
@@ -55,7 +53,7 @@ export default function Landing() {
             boxShadow: '0 4px 14px 0 rgba(37, 99, 235, 0.39)'
           }}
         >
-          Giriş Yap
+          {t('landingLogin')}
         </Button>
       </Box>
 
@@ -73,16 +71,16 @@ export default function Landing() {
               backgroundColor: '#eff6ff', color: '#1d4ed8', borderRadius: 8, 
               fontWeight: 600, fontSize: '0.875rem' 
             }}>
-              MTS v2.0 kullanıma hazır ✨
+              {t('landingReady')} ✨
             </Box>
             <Typography variant="h2" sx={{ fontWeight: 800, color: '#0f172a', mb: 3, letterSpacing: '-1px', lineHeight: 1.1 }}>
-              Uçtan Uca <br />
+              {t('landingTitle')}
               <Typography component="span" variant="h2" sx={{ fontWeight: 800, background: 'linear-gradient(135deg, #2563eb, #9333ea)', WebkitBackgroundClip: 'text', WebkitTextFillColor: 'transparent' }}>
                 Malzeme İzlenebilirliği
               </Typography>
             </Typography>
             <Typography variant="h6" sx={{ color: '#475569', mb: 4, fontWeight: 400, maxWidth: '90%', lineHeight: 1.6 }}>
-              Kimyasal tüketimini izleyin, depo raf hareketlerini yönetin ve malzeme güvenliğini tek bir endüstriyel platformda sağlayın.
+              {t('landingDescription')}
             </Typography>
             <Box sx={{ display: 'flex', gap: 2 }}>
               <Button 
@@ -94,7 +92,7 @@ export default function Landing() {
                   background: '#0f172a', '&:hover': { background: '#1e293b' }
                 }}
               >
-                Sisteme Eriş
+                {t('accessSystem')}
               </Button>
               <Button 
                 variant="outlined" 
@@ -105,7 +103,7 @@ export default function Landing() {
                   borderColor: '#cbd5e1', color: '#475569', '&:hover': { borderColor: '#94a3b8', backgroundColor: '#f1f5f9' }
                 }}
               >
-                Dokümantasyonu Görüntüle
+                {t('viewDocs')}
               </Button>
             </Box>
           </Grid>
@@ -118,15 +116,15 @@ export default function Landing() {
               position: 'relative', overflow: 'hidden'
             }}>
               <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3, alignItems: 'center' }}>
-                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#64748b' }}>CANLI AKIŞ</Typography>
+                <Typography variant="subtitle2" sx={{ fontWeight: 700, color: '#64748b' }}>{t('liveFeed')}</Typography>
                 <Box sx={{ width: 8, height: 8, borderRadius: '50%', backgroundColor: '#22c55e', boxShadow: '0 0 10px #22c55e', animation: 'pulse 2s infinite' }} />
               </Box>
               
               {/* Dummy data rows */}
               {[
-                { title: 'Tanker yükleme işlemi tamamlandı', time: '2 dakika önce', icon: <Truck size={18} color="#2563eb"/>, bg: '#eff6ff' },
-                { title: 'B-993 malzeme partisi tüketildi', time: '14 dakika önce', icon: <Activity size={18} color="#16a34a"/>, bg: '#dcfce7' },
-                { title: 'Stok limiti uyarısı: Aseton', time: '1 saat önce', icon: <ShieldCheck size={18} color="#ea580c"/>, bg: '#ffedd5' },
+                { title: t('liveTanker'), time: `2 ${t('minutesAgo')}`, icon: <Truck size={18} color="#2563eb"/>, bg: '#eff6ff' },
+                { title: t('liveBatch'), time: `14 ${t('minutesAgo')}`, icon: <Activity size={18} color="#16a34a"/>, bg: '#dcfce7' },
+                { title: t('liveStock'), time: `1 ${t('hourAgo')}`, icon: <ShieldCheck size={18} color="#ea580c"/>, bg: '#ffedd5' },
               ].map((item, i) => (
                 <Box key={i} sx={{ display: 'flex', alignItems: 'center', gap: 2, mb: 2, p: 2, backgroundColor: '#ffffff', borderRadius: 2, border: '1px solid #f1f5f9' }}>
                   <Box sx={{ p: 1.5, borderRadius: 2, backgroundColor: item.bg }}>{item.icon}</Box>
@@ -145,7 +143,7 @@ export default function Landing() {
       <Box sx={{ backgroundColor: '#ffffff', py: 10, borderTop: '1px solid #f1f5f9' }}>
         <Container maxWidth="lg">
           <Typography variant="h3" sx={{ textAlign: 'center', fontWeight: 800, color: '#0f172a', mb: 8, letterSpacing: '-0.5px' }}>
-            Modern depo operasyonları için tasarlandı.
+            {t('landingFeaturesTitle')}
           </Typography>
           <Grid container spacing={4}>
             {features.map((feature, idx) => (

@@ -3,7 +3,8 @@ export const getStoredUser = () => {
     const raw = localStorage.getItem('user');
     if (!raw) return null;
     const user = JSON.parse(raw);
-    return user && typeof user.username === 'string' ? user : null;
+    return user && typeof user.username === 'string' &&
+      typeof (user.accessToken || user.token) === 'string' ? user : null;
   } catch {
     return null;
   }

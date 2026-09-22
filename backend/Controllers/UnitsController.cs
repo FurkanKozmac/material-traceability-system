@@ -26,9 +26,10 @@ public class UnitsController(IUnitService unitService) : ControllerBase
     }
 
     [HttpGet("address/{addressId:long}")]
-    public async Task<ActionResult<List<UnitResponse>>> GetByAddress(long addressId, CancellationToken ct)
+    public async Task<ActionResult<PagedResult<UnitResponse>>> GetByAddress(
+        long addressId, [FromQuery] int page = 1, [FromQuery] int size = 50, CancellationToken ct = default)
     {
-        var units = await unitService.GetByAddressIdAsync(addressId, ct);
+        var units = await unitService.GetByAddressIdAsync(addressId, page, size, ct);
         return Ok(units);
     }
 

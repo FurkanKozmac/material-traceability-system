@@ -1,4 +1,5 @@
 using backend.Common.Enums;
+using backend.Common.Exceptions;
 using backend.Data;
 using backend.DTOs;
 using backend.Entities;
@@ -9,13 +10,19 @@ namespace backend.Services.Implementations;
 
 public class AddressService(MtsDbContext context) : IAddressService
 {
-    public async Task<List<AddressResponse>> GetAllAsync(CancellationToken ct = default)
+    public async Task<PagedResult<AddressResponse>> GetAllAsync(int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
-        return await context.Addresses
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var query = context.Addresses.AsNoTracking().OrderBy(a => a.Code);
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .AsNoTracking()
-            .OrderBy(a => a.Code)
             .Select(a => new AddressResponse(a.Id, a.Code, a.MaxCapacity, a.Units.Count, a.StorageType))
             .ToListAsync(ct);
+        return new PagedResult<AddressResponse>(items, totalCount, page, pageSize);
     }
 
     public async Task<AddressResponse?> GetByIdAsync(long id, CancellationToken ct = default)
@@ -53,6 +60,11 @@ public class AddressService(MtsDbContext context) : IAddressService
 
         var address = await context.Addresses.FindAsync([id], ct);
         if (address is null) return false;
+
+        var hasIncompatibleUnits = await context.Units
+            .AnyAsync(u => u.AddressId == id && u.Batch.Chemical.StorageType != parsedStorageType.ToString(), ct);
+        if (hasIncompatibleUnits)
+            throw new BusinessRuleException("Raf, mevcut stokların depolama türüyle uyumsuz hale getirilemez.");
 
         address.StorageType = parsedStorageType.ToString();
         await context.SaveChangesAsync(ct);

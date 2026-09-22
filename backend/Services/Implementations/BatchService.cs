@@ -4,12 +4,13 @@ using backend.DTOs;
 using backend.Entities;
 using backend.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using System.Data;
 
 namespace backend.Services.Implementations;
 
 public class BatchService(MtsDbContext context) : IBatchService
 {
-    public async Task<List<BatchResponse>> GetAllAsync(string? search = null, CancellationToken ct = default)
+    public async Task<PagedResult<BatchResponse>> GetAllAsync(string? search = null, int page = 1, int pageSize = 20, CancellationToken ct = default)
     {
         var query = context.Batches.AsNoTracking();
         if (!string.IsNullOrWhiteSpace(search))
@@ -22,12 +23,18 @@ public class BatchService(MtsDbContext context) : IBatchService
                 (b.Supplier != null && EF.Functions.ILike(b.Supplier, term)));
         }
 
-        return await query
+        page = Math.Max(page, 1);
+        pageSize = Math.Clamp(pageSize, 1, 100);
+        var totalCount = await query.CountAsync(ct);
+        var items = await query
             .OrderByDescending(b => b.Id)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
             .Select(b => new BatchResponse(
                 b.Id, b.BatchNo, b.Supplier, b.InitialQuantity, b.ExpirationDate,
                 b.ChemicalId, b.Chemical.Name, b.Units.Count))
             .ToListAsync(ct);
+        return new PagedResult<BatchResponse>(items, totalCount, page, pageSize);
     }
 
     public async Task<BatchResponse?> GetByIdAsync(long id, CancellationToken ct = default)
@@ -43,6 +50,7 @@ public class BatchService(MtsDbContext context) : IBatchService
 
     public async Task<BatchResponse> CreateAsync(CreateBatchRequest request, CancellationToken ct = default)
     {
+        await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
         var chemical = await context.Chemicals
             .AsNoTracking()
             .FirstOrDefaultAsync(c => c.Id == request.ChemicalId, ct);
@@ -75,11 +83,17 @@ public class BatchService(MtsDbContext context) : IBatchService
             throw new BusinessRuleException(
                 $"{chemical.StorageType} depolama türünde, partideki variller için yeterli kapasiteye sahip bir raf bulunamadı!");
 
-        if (initialAddress.MaxCapacity.HasValue &&
-            initialAddress.Occupancy + request.InitialQuantity > initialAddress.MaxCapacity.Value)
+        var lockedAddress = await context.Addresses
+            .FromSqlInterpolated($"SELECT * FROM addresses WHERE \"Id\" = {initialAddress.Id} FOR UPDATE")
+            .SingleAsync(ct);
+        var currentOccupancy = await context.Units
+            .CountAsync(u => u.AddressId == lockedAddress.Id && (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
+
+        if (lockedAddress.MaxCapacity.HasValue &&
+            currentOccupancy + request.InitialQuantity > lockedAddress.MaxCapacity.Value)
         {
             throw new BusinessRuleException(
-                $"Kabul rafı ({initialAddress.Code}) parti miktarı için yeterli kapasiteye sahip değil!");
+                $"Kabul rafı ({lockedAddress.Code}) parti miktarı için yeterli kapasiteye sahip değil!");
         }
 
         var batch = new Batch
@@ -98,12 +112,13 @@ public class BatchService(MtsDbContext context) : IBatchService
                 Barcode = $"BAR-{request.BatchNo}-{index:D3}",
                 Status = "InStock",
                 Version = 1,
-                AddressId = initialAddress.Id
+                AddressId = lockedAddress.Id
             });
         }
 
         context.Batches.Add(batch);
         await context.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
         return (await GetByIdAsync(batch.Id, ct))!;
     }
 }

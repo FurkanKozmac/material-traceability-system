@@ -8,4 +8,5 @@ public class User
     public string AuthSource { get; set; } = "DB";
     public bool Active { get; set; } = true;
     public ICollection<Role> Roles { get; set; } = [];
+    public ICollection<RefreshToken> RefreshTokens { get; set; } = [];
 }

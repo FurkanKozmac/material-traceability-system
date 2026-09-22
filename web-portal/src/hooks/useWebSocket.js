@@ -11,8 +11,14 @@ export default function useWebSocket(onUpdate) {
   }, [onUpdate]);
 
   useEffect(() => {
+    const brokerUrl = import.meta.env.VITE_WS_URL;
+    if (!brokerUrl) {
+      const timer = setInterval(() => onUpdateRef.current?.(), 30000);
+      return () => clearInterval(timer);
+    }
+
     const client = new Client({
-      brokerURL: import.meta.env.VITE_WS_URL || 'ws://localhost:5059/ws-mts',
+      brokerURL: brokerUrl,
       reconnectDelay: 5000,
       heartbeatIncoming: 4000,
       heartbeatOutgoing: 4000,

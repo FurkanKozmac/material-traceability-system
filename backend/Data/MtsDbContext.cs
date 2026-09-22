@@ -12,6 +12,7 @@ public class MtsDbContext(DbContextOptions<MtsDbContext> options) : DbContext(op
     public DbSet<Address> Addresses => Set<Address>();
     public DbSet<Unit> Units => Set<Unit>();
     public DbSet<RelocationTask> RelocationTasks => Set<RelocationTask>();
+    public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -38,6 +39,21 @@ public class MtsDbContext(DbContextOptions<MtsDbContext> options) : DbContext(op
             e.HasMany(u => u.Roles)
              .WithMany(r => r.Users)
              .UsingEntity(j => j.ToTable("user_roles"));
+
+            e.HasMany(u => u.RefreshTokens)
+             .WithOne(t => t.User)
+             .HasForeignKey(t => t.UserId)
+             .OnDelete(DeleteBehavior.Cascade);
+        });
+
+        modelBuilder.Entity<RefreshToken>(e =>
+        {
+            e.ToTable("refresh_tokens");
+            e.HasKey(t => t.Id);
+            e.HasIndex(t => t.TokenHash).IsUnique();
+            e.HasIndex(t => new { t.UserId, t.ExpiresAt });
+            e.Property(t => t.TokenHash).HasMaxLength(128).IsRequired();
+            e.Property(t => t.ReplacedByTokenHash).HasMaxLength(128);
         });
 
         // 2. Chemicals
@@ -122,11 +138,23 @@ public class MtsDbContext(DbContextOptions<MtsDbContext> options) : DbContext(op
             e.HasIndex(t => t.UnitId)
              .IsUnique()
              .HasFilter("status = 'Pending'");
+            e.HasIndex(t => new { t.Status, t.CreatedAt });
 
             e.HasOne(t => t.Unit).WithMany().HasForeignKey(t => t.UnitId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(t => t.FromAddress).WithMany().HasForeignKey(t => t.FromAddressId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(t => t.ToAddress).WithMany().HasForeignKey(t => t.ToAddressId).OnDelete(DeleteBehavior.Restrict);
             e.HasOne(t => t.CompletedByUser).WithMany().HasForeignKey(t => t.CompletedByUserId).OnDelete(DeleteBehavior.SetNull);
+        });
+
+        modelBuilder.Entity<Unit>(e =>
+        {
+            e.HasIndex(u => new { u.Status, u.BatchId });
+            e.HasIndex(u => new { u.AddressId, u.Status });
+        });
+
+        modelBuilder.Entity<Batch>(e =>
+        {
+            e.HasIndex(b => new { b.ChemicalId, b.ExpirationDate });
         });
     }
 }

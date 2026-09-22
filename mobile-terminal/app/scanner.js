@@ -1,25 +1,42 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Vibration } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useRouter } from 'expo-router';
 import { consumeUnit, scanBatch, scanUnit } from '../src/services/api';
+import { useLanguage } from '../src/context/LanguageContext';
 
 export default function ScannerScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [permission, requestPermission] = useCameraPermissions();
   const [barcode, setBarcode] = useState('');
   const [unit, setUnit] = useState(null);
   const [activeBatch, setActiveBatch] = useState(null);
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
+  const scanLockRef = useRef(false);
+  const cooldownRef = useRef(null);
 
-  const lookup = async (value) => {
+  const releaseScanLock = () => {
+    if (cooldownRef.current) clearTimeout(cooldownRef.current);
+    cooldownRef.current = setTimeout(() => {
+      scanLockRef.current = false;
+      cooldownRef.current = null;
+    }, 2500);
+  };
+
+  useEffect(() => () => {
+    if (cooldownRef.current) clearTimeout(cooldownRef.current);
+  }, []);
+
+  const lookup = async (value, fromCamera = false) => {
     const normalized = value.trim();
     if (!normalized || loading) return;
     if (!/^(BAT-|UNIT-|BAR-)/i.test(normalized)) {
-      Alert.alert('Geçersiz Barkod', 'Geçersiz MTS Barkodu! Lütfen sistemimize ait bir batch veya varil etiketi okutunuz.');
+      Alert.alert(t('invalidBarcode'), t('invalidBarcodeMessage'));
       setScanned(false);
       setUnit(null);
+      if (fromCamera) releaseScanLock();
       return;
     }
     setLoading(true);
@@ -35,16 +52,18 @@ export default function ScannerScreen() {
       }
 
       if (!activeBatch) {
-        Alert.alert('Önce Batch Okutulmalı', 'Varil tüketimine başlamadan önce hammadde partisinin BAT- ile başlayan QR etiketini okutunuz.');
+        Alert.alert(t('scanBatchFirst'), t('scanBatchFirstMessage'));
         setScanned(false);
+        if (fromCamera) releaseScanLock();
         return;
       }
 
       const result = await scanUnit(normalized);
       if (result.batchId !== activeBatch.id) {
-        Alert.alert('Yanlış Hammadde Partisi', `Okutulan varil açık olan ${activeBatch.batchNo} partisine ait değildir.`);
+        Alert.alert(t('wrongBatch'), `${t('batch')}: ${activeBatch.batchNo}`);
         setUnit(null);
         setScanned(false);
+        if (fromCamera) releaseScanLock();
         return;
       }
       setBarcode(normalized);
@@ -54,10 +73,18 @@ export default function ScannerScreen() {
     } catch (error) {
       setUnit(null);
       setScanned(false);
-      Alert.alert('Barkod bulunamadı', error.message || 'Varil bilgisi alınamadı.');
+      if (fromCamera) releaseScanLock();
+      Alert.alert(t('barcodeNotFound'), error.message || t('barrelLookupFailed'));
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleCameraScan = ({ data }) => {
+    if (scanLockRef.current || loading) return;
+    scanLockRef.current = true;
+    setScanned(true);
+    lookup(data, true);
   };
 
   const consume = async () => {
@@ -68,9 +95,9 @@ export default function ScannerScreen() {
       setUnit(result);
       setActiveBatch(await scanBatch(activeBatch.batchBarcode));
       Vibration.vibrate([0, 100, 50, 100]);
-      Alert.alert('Başarılı', 'Varil başarıyla tüketime verildi!');
+      Alert.alert(t('success'), t('consumeSuccess'));
     } catch (error) {
-      Alert.alert('Tüketim başarısız', error.message || 'Varil tüketime verilemedi.');
+      Alert.alert(t('consumeFailed'), error.message || t('consumeFailed'));
     } finally {
       setLoading(false);
     }
@@ -79,58 +106,58 @@ export default function ScannerScreen() {
   return <SafeAreaView style={styles.container}>
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={styles.title}>Varil Barkod İşlemi</Text>
-        <TouchableOpacity onPress={() => router.back()}><Text style={styles.back}>Geri</Text></TouchableOpacity>
+        <Text style={styles.title}>{t('barrelScan')}</Text>
+        <TouchableOpacity onPress={() => router.back()}><Text style={styles.back}>{t('back')}</Text></TouchableOpacity>
       </View>
 
       <View style={styles.searchRow}>
         <TextInput style={styles.input} placeholder={activeBatch ? 'BAR-LOT2026-001' : 'BAT-LOT2026'} autoCapitalize="characters" value={barcode} onChangeText={setBarcode} onSubmitEditing={() => lookup(barcode)} />
         <TouchableOpacity style={styles.searchButton} onPress={() => lookup(barcode)} disabled={loading}>
-          <Text style={styles.buttonText}>Sorgula</Text>
+          <Text style={styles.buttonText}>{t('query')}</Text>
         </TouchableOpacity>
       </View>
 
       {activeBatch && <View style={styles.batchCard}>
         <View style={styles.batchHeader}>
           <View>
-            <Text style={styles.batchEyebrow}>AKTİF HAMMADDE PARTİSİ</Text>
+            <Text style={styles.batchEyebrow}>{t('activeBatch')}</Text>
             <Text style={styles.batchTitle}>{activeBatch.batchNo}</Text>
           </View>
-          <TouchableOpacity onPress={() => { setActiveBatch(null); setUnit(null); setScanned(false); }}><Text style={styles.changeBatch}>Değiştir</Text></TouchableOpacity>
+          <TouchableOpacity onPress={() => { setActiveBatch(null); setUnit(null); setScanned(false); scanLockRef.current = false; }}><Text style={styles.changeBatch}>{t('change')}</Text></TouchableOpacity>
         </View>
         <Text style={styles.batchChemical}>{activeBatch.chemicalName}</Text>
-        <Text style={styles.batchMeta}>Raf: {activeBatch.addressCodes?.join(', ') || 'Rafa atanmamış'}</Text>
+        <Text style={styles.batchMeta}>{t('rack')}: {activeBatch.addressCodes?.join(', ') || t('unassignedRack')}</Text>
         <View style={styles.batchStats}>
-          <Text style={styles.batchStat}>Toplam: {activeBatch.totalUnits}</Text>
-          <Text style={styles.batchStatAvailable}>Müsait: {activeBatch.availableUnits}</Text>
-          <Text style={styles.batchStat}>Tüketilen: {activeBatch.consumedUnits}</Text>
+          <Text style={styles.batchStat}>{t('total')}: {activeBatch.totalUnits}</Text>
+          <Text style={styles.batchStatAvailable}>{t('available')}: {activeBatch.availableUnits}</Text>
+          <Text style={styles.batchStat}>{t('consumed')}: {activeBatch.consumedUnits}</Text>
         </View>
-        {scanned && !unit && <TouchableOpacity style={styles.continueButton} onPress={() => setScanned(false)}><Text style={styles.buttonText}>BİRİM TARAMAYA GEÇ</Text></TouchableOpacity>}
+        {scanned && !unit && <TouchableOpacity style={styles.continueButton} onPress={() => { setScanned(false); scanLockRef.current = false; }}><Text style={styles.buttonText}>{t('continueUnitScan')}</Text></TouchableOpacity>}
       </View>}
 
       {permission?.granted ? <View style={styles.cameraBox}>
-        <CameraView style={StyleSheet.absoluteFillObject} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scanned ? undefined : ({ data }) => lookup(data)} />
+        <CameraView style={StyleSheet.absoluteFillObject} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scanned ? undefined : handleCameraScan} />
         <View style={styles.reticle} />
       </View> : <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
-        <Text style={styles.buttonText}>Kamerayı Etkinleştir</Text>
+        <Text style={styles.buttonText}>{t('enableCamera')}</Text>
       </TouchableOpacity>}
 
       {loading && <ActivityIndicator size="large" color="#2563eb" style={styles.loader} />}
 
       {unit && <View style={styles.card}>
         <Text style={styles.cardTitle}>{unit.chemicalName}</Text>
-        <Text style={styles.row}>Kimyasal Kodu: {unit.chemicalCode}</Text>
-        <Text style={styles.row}>Parti: {unit.batchNo}</Text>
-        <Text style={styles.row}>Barkod: {unit.barcode}</Text>
-        <Text style={styles.row}>Raf: {unit.addressCode || 'Rafta değil'}</Text>
-        <Text style={styles.row}>SKT: {unit.expirationDate ? new Date(unit.expirationDate).toLocaleDateString() : '-'}</Text>
-        <Text style={styles.row}>Durum: {unit.status}</Text>
+        <Text style={styles.row}>{t('chemicalCode')}: {unit.chemicalCode}</Text>
+        <Text style={styles.row}>{t('batch')}: {unit.batchNo}</Text>
+        <Text style={styles.row}>{t('barcode')}: {unit.barcode}</Text>
+        <Text style={styles.row}>{t('rack')}: {unit.addressCode || t('unassignedRack')}</Text>
+        <Text style={styles.row}>{t('expiration')}: {unit.expirationDate ? new Date(unit.expirationDate).toLocaleDateString() : '-'}</Text>
+        <Text style={styles.row}>{t('status')}: {unit.status}</Text>
 
         <TouchableOpacity style={[styles.consumeButton, unit.status === 'Depleted' && styles.disabled]} onPress={consume} disabled={loading || unit.status === 'Depleted'}>
-          <Text style={styles.consumeText}>{unit.status === 'Depleted' ? 'TÜKETİLMİŞ' : 'TÜKETİME VER (CONSUME)'}</Text>
+          <Text style={styles.consumeText}>{unit.status === 'Depleted' ? t('depleted') : t('consume')}</Text>
         </TouchableOpacity>
-        <TouchableOpacity style={styles.scanAgain} onPress={() => { setUnit(null); setBarcode(''); setScanned(false); }}>
-          <Text style={styles.scanAgainText}>Aynı Partiden Yeni Birim Tara</Text>
+        <TouchableOpacity style={styles.scanAgain} onPress={() => { setUnit(null); setBarcode(''); setScanned(false); scanLockRef.current = false; }}>
+          <Text style={styles.scanAgainText}>{t('sameBatchScan')}</Text>
         </TouchableOpacity>
       </View>}
     </ScrollView>

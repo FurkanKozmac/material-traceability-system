@@ -151,8 +151,9 @@ public class RelocationTaskService(MtsDbContext context) : IRelocationTaskServic
             throw new BusinessRuleException("Stok birimi artık görevin kaynak rafında değil. Görev yenilenmelidir!");
 
         var targetAddress = await context.Addresses
+            .FromSqlInterpolated($"SELECT * FROM addresses WHERE \"Id\" = {task.ToAddressId} FOR UPDATE")
             .Include(a => a.Units)
-            .FirstOrDefaultAsync(a => a.Id == task.ToAddressId, ct);
+            .SingleOrDefaultAsync(ct);
 
         if (targetAddress is null)
             throw new BusinessRuleException("Hedef raf bulunamadı!");

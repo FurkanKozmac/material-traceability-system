@@ -3,9 +3,11 @@ import { StyleSheet, Text, View, TextInput, TouchableOpacity, Alert, SafeAreaVie
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRouter } from 'expo-router';
 import { testConnection } from '../src/services/api';
+import { useLanguage } from '../src/context/LanguageContext';
 
 export default function SettingsScreen() {
   const router = useRouter();
+  const { t } = useLanguage();
   const [ip, setIp] = useState('');
   const [testing, setTesting] = useState(false);
 
@@ -21,18 +23,18 @@ export default function SettingsScreen() {
 
   const handleSave = async () => {
     if (!ip.trim()) {
-      Alert.alert('Geçersiz Adres', 'Lütfen geçerli bir IP adresi giriniz.');
+      Alert.alert(t('invalidAddress'), t('invalidAddressMessage'));
       return;
     }
     try {
       setTesting(true);
       const normalizedUrl = await testConnection(ip);
       await AsyncStorage.setItem('backend_ip', normalizedUrl);
-      Alert.alert('Başarılı', 'Bağlantı doğrulandı ve sunucu adresi kaydedildi.', [
-        { text: 'Tamam', onPress: () => router.back() }
+      Alert.alert(t('success'), t('connectionSuccess'), [
+        { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (e) {
-      Alert.alert('Bağlantı Başarısız', e.message || 'Sunucuya ulaşılamıyor.');
+      Alert.alert(t('connectionFailed'), e.message || t('connectionFailed'));
     } finally {
       setTesting(false);
     }
@@ -41,10 +43,10 @@ export default function SettingsScreen() {
   return (
     <SafeAreaView style={styles.container}>
       <View style={styles.content}>
-        <Text style={styles.title}>Sunucu Bağlantı Ayarları</Text>
-        <Text style={styles.subtitle}>Yerel ağdaki .NET Backend API adresini belirtiniz.</Text>
+        <Text style={styles.title}>{t('settingsTitle')}</Text>
+        <Text style={styles.subtitle}>{t('settingsSubtitle')}</Text>
         
-        <Text style={styles.label}>Backend Sunucu IP / URL</Text>
+        <Text style={styles.label}>{t('backendAddress')}</Text>
         <TextInput
           style={styles.input}
           placeholder="Örn. 192.168.1.25:5059"
@@ -55,11 +57,11 @@ export default function SettingsScreen() {
         />
 
         <TouchableOpacity style={[styles.saveButton, testing && { opacity: 0.6 }]} onPress={handleSave} disabled={testing}>
-          <Text style={styles.saveButtonText}>{testing ? 'BAĞLANTI SINANIYOR…' : 'BAĞLANTIYI TEST ET VE KAYDET'}</Text>
+          <Text style={styles.saveButtonText}>{testing ? t('testingConnection') : t('testSaveConnection')}</Text>
         </TouchableOpacity>
 
         <TouchableOpacity style={styles.backButton} onPress={() => router.back()}>
-          <Text style={styles.backButtonText}>İptal</Text>
+          <Text style={styles.backButtonText}>{t('cancel')}</Text>
         </TouchableOpacity>
       </View>
     </SafeAreaView>

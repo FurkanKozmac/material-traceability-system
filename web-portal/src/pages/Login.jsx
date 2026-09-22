@@ -4,7 +4,7 @@ import { useNavigate, Navigate } from 'react-router-dom';
 import { User, Lock, Eye, EyeOff, LogIn } from 'lucide-react';
 import api from '../api';
 import { getStoredUser } from '../auth';
-import { useLanguage } from '../LanguageContext';
+import { useLanguage } from '../useLanguage';
 
 export default function Login() {
   const { language, setLanguage, t } = useLanguage();

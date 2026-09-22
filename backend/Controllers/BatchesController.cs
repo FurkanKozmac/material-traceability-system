@@ -17,7 +17,7 @@ public class BatchesController(IBatchService batchService, MtsDbContext context)
         [FromQuery] int? page,
         [FromQuery] int? size,
         CancellationToken ct) =>
-        Ok(await batchService.GetAllAsync(search, ct));
+        Ok(await batchService.GetAllAsync(search, page ?? 1, size ?? 20, ct));
 
     [HttpGet("{id:long}")]
     public async Task<ActionResult<BatchResponse>> GetById(long id, CancellationToken ct)

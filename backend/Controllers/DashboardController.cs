@@ -13,16 +13,21 @@ public class DashboardController(MtsDbContext context) : ControllerBase
     {
         var now = DateTime.UtcNow;
 
-        var usableInStock = await context.Units.CountAsync(
-            u => (u.Status == "InStock" || u.Status == "AVAILABLE") &&
-                 (u.Batch.ExpirationDate == null || u.Batch.ExpirationDate >= now), ct);
+        var counts = await context.Units
+            .GroupBy(_ => 1)
+            .Select(group => new
+            {
+                UsableInStock = group.Count(u => (u.Status == "InStock" || u.Status == "AVAILABLE") &&
+                    (u.Batch.ExpirationDate == null || u.Batch.ExpirationDate >= now)),
+                BlockedExpired = group.Count(u => (u.Status == "InStock" || u.Status == "AVAILABLE") &&
+                    u.Batch.ExpirationDate.HasValue && u.Batch.ExpirationDate.Value < now),
+                Consumed = group.Count(u => u.Status == "Depleted")
+            })
+            .FirstOrDefaultAsync(ct);
 
-        var blockedExpired = await context.Units.CountAsync(
-            u => (u.Status == "InStock" || u.Status == "AVAILABLE") &&
-                 u.Batch.ExpirationDate.HasValue &&
-                 u.Batch.ExpirationDate.Value < now, ct);
-
-        var consumed = await context.Units.CountAsync(u => u.Status == "Depleted", ct);
+        var usableInStock = counts?.UsableInStock ?? 0;
+        var blockedExpired = counts?.BlockedExpired ?? 0;
+        var consumed = counts?.Consumed ?? 0;
         var totalUnits = usableInStock + blockedExpired + consumed;
 
         return Ok(new
