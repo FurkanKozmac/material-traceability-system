@@ -80,3 +80,6 @@ logs/
 mts_postgres_data/
 docker-compose.override.yml
 docker-compose.local.yml
+
+**/.local/
+**/Library/
