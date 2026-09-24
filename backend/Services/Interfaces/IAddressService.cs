@@ -8,4 +8,6 @@ public interface IAddressService
     Task<AddressResponse?> GetByIdAsync(long id, CancellationToken ct = default);
     Task<AddressResponse> CreateAsync(CreateAddressRequest request, CancellationToken ct = default);
     Task<bool> UpdateStorageTypeAsync(long id, string storageType, CancellationToken ct = default);
+    Task<bool> UpdateCapacityAsync(long id, int maxCapacity, CancellationToken ct = default);
+    Task<bool> DeleteAsync(long id, CancellationToken ct = default);
 }

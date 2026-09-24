@@ -1,9 +1,10 @@
 import React, { useEffect, useState } from 'react';
-import { Alert, Box, Button, MenuItem, Paper, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
+import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, MenuItem, Paper, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import QRCode from 'qrcode';
 import api from '../api';
 import { isAdmin } from '../auth';
 import { useLanguage } from '../useLanguage';
+import { getLocalizedApiError } from '../apiError';
 
 export default function AddressManagement() {
   const { t } = useLanguage();
@@ -11,6 +12,7 @@ export default function AddressManagement() {
   const [addresses, setAddresses] = useState([]);
   const storageTypes = [
     { value: 'GENERAL', label: t('general') },
+    { value: 'SOLVENT', label: t('solvent') },
     { value: 'FLAMMABLE', label: t('flammable') },
     { value: 'CORROSIVE', label: t('corrosive') },
     { value: 'PAINT', label: t('paint') },
@@ -18,6 +20,7 @@ export default function AddressManagement() {
   const storageTypeLabel = (value) => storageTypes.find((item) => item.value === value)?.label || value;
   const [form, setForm] = useState({ code: '', maxCapacity: '', storageType: 'GENERAL' });
   const [message, setMessage] = useState(null);
+  const [deleteTarget, setDeleteTarget] = useState(null);
   const load = async () => setAddresses((await api.get('/addresses')).data.items);
 
   useEffect(() => { load().catch(() => setMessage({ type: 'error', text: t('addressLoadFailed') })); }, [t]);
@@ -25,12 +28,12 @@ export default function AddressManagement() {
   const create = async (event) => {
     event.preventDefault();
     try {
-      await api.post('/addresses', { code: form.code, maxCapacity: form.maxCapacity ? Number(form.maxCapacity) : null, storageType: form.storageType });
+      await api.post('/addresses', { code: form.code, maxCapacity: Number(form.maxCapacity), storageType: form.storageType });
       setForm({ code: '', maxCapacity: '', storageType: 'GENERAL' });
       setMessage({ type: 'success', text: t('addressCreated') });
       await load();
     } catch (error) {
-      setMessage({ type: 'error', text: error.response?.data?.message || error.response?.data || t('addressCreateFailed') });
+      setMessage({ type: 'error', text: getLocalizedApiError(error, t, t('addressCreateFailed')) });
     }
   };
 
@@ -49,7 +52,20 @@ export default function AddressManagement() {
       setMessage({ type: 'success', text: `${address.code} ${t('addressTypeUpdated')}` });
       await load();
     } catch (error) {
-      setMessage({ type: 'error', text: error.response?.data?.message || t('addressTypeUpdateFailed') });
+      setMessage({ type: 'error', text: getLocalizedApiError(error, t, t('addressTypeUpdateFailed')) });
+    }
+  };
+
+  const remove = async () => {
+    if (!deleteTarget) return;
+    try {
+      await api.delete(`/addresses/${deleteTarget.id}`);
+      setAddresses((current) => current.filter((address) => address.id !== deleteTarget.id));
+      setMessage({ type: 'success', text: t('rackDeleted') });
+    } catch (error) {
+      setMessage({ type: 'error', text: getLocalizedApiError(error, t, t('rackDeleteFailed')) });
+    } finally {
+      setDeleteTarget(null);
     }
   };
 
@@ -58,12 +74,17 @@ export default function AddressManagement() {
     {message && <Alert severity={message.type} sx={{ mb: 2 }}>{String(message.text)}</Alert>}
     {canManage && <Paper component="form" onSubmit={create} sx={{ p: 3, mb: 3, display: 'flex', gap: 2, flexWrap: 'wrap' }}>
       <TextField required label={t('rackCode')} value={form.code} onChange={(e) => setForm({ ...form, code: e.target.value })} />
-      <TextField type="number" label={t('capacity')} slotProps={{ htmlInput: { min: 1, max: 1000 } }} value={form.maxCapacity} onChange={(e) => setForm({ ...form, maxCapacity: e.target.value })} />
+      <TextField required type="number" label={t('rackCapacityRequired')} slotProps={{ htmlInput: { min: 1, max: 1000 } }} value={form.maxCapacity} onChange={(e) => setForm({ ...form, maxCapacity: e.target.value })} />
       <TextField required select label={t('storageType')} value={form.storageType} onChange={(e) => setForm({ ...form, storageType: e.target.value })} sx={{ minWidth: 180 }}>{storageTypes.map((item) => <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>)}</TextField>
       <Button type="submit" variant="contained">{t('saveCreate')}</Button>
     </Paper>}
-    <Paper><Table><TableHead><TableRow><TableCell>{t('rackCode')}</TableCell><TableCell>{t('storageType')}</TableCell><TableCell>{t('capacity')}</TableCell><TableCell>{t('currentOccupancy')}</TableCell><TableCell>{t('availableCapacity')}</TableCell><TableCell>{t('label')}</TableCell></TableRow></TableHead>
-      <TableBody>{addresses.map((address) => <TableRow key={address.id}><TableCell>{address.code}</TableCell><TableCell><TextField select size="small" disabled={!canManage} value={address.storageType} onChange={(e) => updateStorageType(address, e.target.value)} sx={{ minWidth: 130 }}>{storageTypes.map((item) => <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>)}</TextField></TableCell><TableCell>{address.maxCapacity ?? t('unlimited')}</TableCell><TableCell>{address.currentOccupancy}</TableCell><TableCell>{address.maxCapacity == null ? t('unlimited') : Math.max(0, address.maxCapacity - address.currentOccupancy)}</TableCell><TableCell><Button size="small" onClick={() => printAddressLabel(address)}>{t('printQr')}</Button></TableCell></TableRow>)}</TableBody>
+    <Paper><Table><TableHead><TableRow><TableCell>{t('rackCode')}</TableCell><TableCell>{t('storageType')}</TableCell><TableCell>{t('capacity')}</TableCell><TableCell>{t('currentOccupancy')}</TableCell><TableCell>{t('availableCapacity')}</TableCell><TableCell>{t('label')}</TableCell><TableCell>{t('actions')}</TableCell></TableRow></TableHead>
+      <TableBody>{addresses.map((address) => <TableRow key={address.id}><TableCell>{address.code}</TableCell><TableCell><TextField select size="small" disabled={!canManage} value={address.storageType} onChange={(e) => updateStorageType(address, e.target.value)} sx={{ minWidth: 130 }}>{storageTypes.map((item) => <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>)}</TextField></TableCell><TableCell>{address.maxCapacity}</TableCell><TableCell>{address.currentOccupancy}</TableCell><TableCell>{Math.max(0, address.maxCapacity - address.currentOccupancy)}</TableCell><TableCell><Button size="small" onClick={() => printAddressLabel(address)}>{t('printQr')}</Button></TableCell><TableCell>{canManage && <Button size="small" color="error" onClick={() => setDeleteTarget(address)}>{t('delete')}</Button>}</TableCell></TableRow>)}</TableBody>
     </Table></Paper>
+    <Dialog open={Boolean(deleteTarget)} onClose={() => setDeleteTarget(null)}>
+      <DialogTitle>{t('delete')}</DialogTitle>
+      <DialogContent><DialogContentText>{t('rackDeleteConfirm')}</DialogContentText></DialogContent>
+      <DialogActions><Button onClick={() => setDeleteTarget(null)}>{t('cancel')}</Button><Button color="error" variant="contained" onClick={remove}>{t('delete')}</Button></DialogActions>
+    </Dialog>
   </Box>;
 }

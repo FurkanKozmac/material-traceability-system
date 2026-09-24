@@ -4,6 +4,7 @@ import { AddRoad, CancelOutlined, SwapHoriz } from '@mui/icons-material';
 import api from '../api';
 import { isAdmin } from '../auth';
 import { useLanguage } from '../useLanguage';
+import { getLocalizedApiError } from '../apiError';
 
 export default function RelocationTasks() {
   const { t } = useLanguage();
@@ -19,7 +20,7 @@ export default function RelocationTasks() {
 
   const load = useCallback(async () => {
     try { setTasks((await api.get('/relocation-tasks')).data); }
-    catch (error) { setMessage({ type: 'error', text: error.response?.data?.message || t('tasksLoadFailed') }); }
+    catch (error) { setMessage({ type: 'error', text: getLocalizedApiError(error, t, t('tasksLoadFailed')) }); }
     finally { setLoading(false); }
   }, [t]);
 
@@ -32,7 +33,7 @@ export default function RelocationTasks() {
       const available = (await api.get(`/relocation-tasks/eligible-targets/${found.id}`)).data;
       setUnit(found); setTargets(available);
       if (!available.length) setMessage({ type: 'warning', text: t('compatibleRackNotFound') });
-    } catch (error) { setMessage({ type: 'error', text: error.response?.data?.message || error.response?.data || t('unitLookupFailed') }); }
+    } catch (error) { setMessage({ type: 'error', text: getLocalizedApiError(error, t, t('unitLookupFailed')) }); }
   };
 
   const create = async () => {
@@ -40,12 +41,12 @@ export default function RelocationTasks() {
       await api.post('/relocation-tasks', { unitId: unit.id, toAddressId: Number(targetId) });
       setMessage({ type: 'success', text: t('taskCreated') });
       setBarcode(''); setUnit(null); setTargets([]); setTargetId(''); setStatus('Pending'); await load();
-    } catch (error) { setMessage({ type: 'error', text: error.response?.data?.message || t('taskCreateFailed') }); }
+    } catch (error) { setMessage({ type: 'error', text: getLocalizedApiError(error, t, t('taskCreateFailed')) }); }
   };
 
   const cancel = async (id) => {
     try { await api.put(`/relocation-tasks/${id}/cancel`); await load(); }
-    catch (error) { setMessage({ type: 'error', text: error.response?.data?.message || t('cancelTaskFailed') }); }
+    catch (error) { setMessage({ type: 'error', text: getLocalizedApiError(error, t, t('cancelTaskFailed')) }); }
   };
 
   const visible = tasks.filter((task) => task.status === status);

@@ -16,6 +16,7 @@ const AddressManagement = lazy(() => import('./pages/AddressManagement'));
 const InventoryMaster = lazy(() => import('./pages/InventoryMaster'));
 const QrLabelManager = lazy(() => import('./pages/QrLabelManager'));
 const RelocationTasks = lazy(() => import('./pages/RelocationTasks'));
+const SafetyAssistant = lazy(() => import('./pages/SafetyAssistant'));
 
 // Smart redirect: token varsa dashboard'a, yoksa login'e
 function SmartRedirect() {
@@ -45,6 +46,7 @@ function App() {
                   <Route path="/units" element={<InventoryMaster />} />
                   <Route path="/qr-labels" element={<QrLabelManager />} />
                   <Route path="/relocation-tasks" element={<RelocationTasks />} />
+                  <Route path="/safety-assistant" element={<SafetyAssistant />} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Route>
               </Route>

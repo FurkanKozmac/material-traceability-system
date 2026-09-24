@@ -3,6 +3,7 @@ import { Alert, Box, Button, MenuItem, Paper, Table, TableBody, TableCell, Table
 import api from '../api';
 import { isAdmin } from '../auth';
 import { useLanguage } from '../useLanguage';
+import { getLocalizedApiError } from '../apiError';
 
 const emptyForm = { batchNo: '', supplier: '', initialQuantity: 1, expirationDate: '', chemicalId: '' };
 
@@ -33,7 +34,7 @@ export default function BatchManagement() {
       setMessage({ type: 'success', text: t('batchCreated') });
       await load();
     } catch (error) {
-      setMessage({ type: 'error', text: error.response?.data?.message || error.response?.data || t('batchCreateFailed') });
+      setMessage({ type: 'error', text: getLocalizedApiError(error, t, t('batchCreateFailed')) });
     }
   };
 

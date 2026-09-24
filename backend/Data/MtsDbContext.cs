@@ -95,7 +95,7 @@ public class MtsDbContext(DbContextOptions<MtsDbContext> options) : DbContext(op
             e.HasKey(a => a.Id);
             e.Property(a => a.Code).HasColumnName("code").IsRequired().HasMaxLength(50);
             e.HasIndex(a => a.Code).IsUnique();
-            e.Property(a => a.MaxCapacity).HasColumnName("max_capacity");
+            e.Property(a => a.MaxCapacity).HasColumnName("max_capacity").IsRequired();
             e.Property(a => a.StorageType).HasColumnName("storage_type").IsRequired().HasMaxLength(30).HasDefaultValue("GENERAL");
         });
 

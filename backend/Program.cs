@@ -4,6 +4,7 @@ using System.Net;
 using System.Threading.RateLimiting;
 using backend.Data;
 using backend.Entities;
+using backend.Hubs;
 using backend.Middlewares;
 using backend.Services.Implementations;
 using backend.Services.Interfaces;
@@ -59,6 +60,8 @@ builder.Services.AddDbContext<MtsDbContext>(options =>
     options.UseNpgsql(builder.Configuration.GetConnectionString("DefaultConnection")));
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddHttpClient();
+builder.Services.AddSignalR();
 
 var jwtKey = builder.Configuration["Jwt:Key"]
     ?? throw new InvalidOperationException("Jwt:Key yapılandırılmalıdır.");
@@ -78,6 +81,19 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
         };
         options.Events = new JwtBearerEvents
         {
+            OnMessageReceived = context =>
+            {
+                var accessToken = context.Request.Query["access_token"];
+                var requestPath = context.HttpContext.Request.Path;
+
+                if (!string.IsNullOrEmpty(accessToken) &&
+                    requestPath.StartsWithSegments("/hubs/traceability"))
+                {
+                    context.Token = accessToken;
+                }
+
+                return Task.CompletedTask;
+            },
             OnTokenValidated = context =>
             {
                 if (context.Principal?.FindFirst("token_type")?.Value != "access")
@@ -99,6 +115,7 @@ builder.Services.AddScoped<IUnitService, UnitService>();
 builder.Services.AddScoped<IBatchService, BatchService>();
 builder.Services.AddScoped<IAddressService, AddressService>();
 builder.Services.AddScoped<IRelocationTaskService, RelocationTaskService>();
+builder.Services.AddScoped<IMsdsRagService, MsdsRagService>();
 
 // Controller & JSON Ayarları
 builder.Services.AddControllers().AddJsonOptions(options =>
@@ -132,6 +149,7 @@ if (app.Environment.IsDevelopment())
 app.UseAuthentication();
 app.UseAuthorization();
 app.MapControllers();
+app.MapHub<TraceabilityHub>("/hubs/traceability");
 
 // Otomatik Migration Uygulama ve Veri Tohumlayıcı (Seeder)
 using (var scope = app.Services.CreateScope())

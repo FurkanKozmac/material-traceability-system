@@ -21,6 +21,42 @@ const translations = {
     qrLabels: 'QR Barkod Etiketleri',
     relocationTasks: 'Raf Taşıma Görevleri',
     language: 'Dil / Language',
+    apiErrors: {
+      INSUFFICIENT_RACK_CAPACITY: '{storageType} depolama türünde yeterli raf kapasitesi bulunamadı.',
+      RACK_STORAGE_TYPE_INCOMPATIBLE: 'Raf, mevcut stokların depolama türüyle uyumsuz hale getirilemez.',
+      CANNOT_DELETE_NON_EMPTY_RACK: 'Rafta aktif stok bulunduğu için bu raf silinemez!',
+      INVALID_RACK_CAPACITY: 'Raf kapasitesi sıfırdan büyük olmalıdır.',
+      RACK_CAPACITY_BELOW_OCCUPANCY: 'Yeni kapasite mevcut aktif stoktan küçük olamaz.',
+    },
+    safetyAssistant: {
+      title: 'İSG & MSDS Asistanı',
+      subtitle: 'Resmi MSDS dokümanları üzerinden yerel yapay zeka destekli acil durum rehberi.',
+      selectChemical: 'Kimyasal Seçiniz',
+      scopeTitle: 'Doküman kapsamı',
+      scopeNote: 'Yanıtlar yalnızca seçili kimyasalın resmi MSDS bölümünden üretilir.',
+      quickTitle: 'Hızlı acil durum soruları',
+      quickDescription: 'Operasyon anında sık kullanılan hazır sorulardan birini seçin.',
+      askTitle: 'Operatör sorusu',
+      askPlaceholder: 'Bir acil durum veya güvenlik sorusu sorun...',
+      askButton: 'Yapay Zekaya Sor',
+      loadingText: 'MSDS dokümanı taranıyor ve cevap üretiliyor...',
+      assistantResponse: 'ASİSTAN YANITI',
+      verifiedBadge: 'MSDS doğrulandı',
+      reviewBadge: 'Kontrol gerekli',
+      sourcePrefix: 'Kaynak:',
+      readyTitle: 'Güvenlik sorunuz yanıtlanmaya hazır.',
+      readyDescription: 'Bir hazır soru seçin veya operatör sorunuzu yukarıya yazın.',
+      chemicalLoadFailed: 'Kimyasal listesi yüklenemedi.',
+      fallbackChemicalNote: 'Varsayılan olarak CC-202 kullanılabilir.',
+      emptyQuestion: 'Lütfen operatör sorusunu yazın.',
+      answerFailed: 'Asistan yanıt veremedi. Lütfen Ollama servisinin açık olduğunu kontrol edin.',
+      quickChips: {
+        fire: 'Alev alırsa su ile söndürülür mü?',
+        firstAid: 'Cilde temas ederse ilk yardım prosedürü nedir?',
+        spill: 'Varil delinirse dökülmeye nasıl müdahale edilir?',
+        storage: 'Güvenli depolama ve raf sıcaklık şartları nelerdir?',
+      },
+    },
 
     // Dashboard
     dashboardTitle: 'Sistem Genel Görünümü',
@@ -58,6 +94,7 @@ const translations = {
       available: 'Müsait',
     expired: 'Süresi Dolmuş',
     depleted: 'Tüketildi',
+    unitConsumedNotification: '{barcode} mobil terminal tarafından tüketildi.',
     expDate: 'SKT',
 
     // Relocation Tasks
@@ -79,6 +116,7 @@ const translations = {
     capacity: 'Kapasite',
     storageType: 'Depolama Türü',
     general: 'Genel',
+    solvent: 'Solvent',
     flammable: 'Yanıcı',
     corrosive: 'Korozif',
     paint: 'Boya',
@@ -94,6 +132,10 @@ const translations = {
     allowPopups: 'Etiketi yazdırmak için açılır pencerelere izin veriniz.',
     addressTypeUpdated: 'depolama türü güncellendi.',
     addressTypeUpdateFailed: 'Depolama türü güncellenemedi.',
+    rackDeleteConfirm: 'Bu rafı silmek istediğinize emin misiniz?',
+    rackDeleted: 'Raf başarıyla silindi.',
+    rackDeleteFailed: 'Raf silinemedi.',
+    rackCapacityRequired: 'Kapasite',
     targetRackLabel: 'HEDEF RAF ETİKETİ',
     storage: 'Depolama',
 
@@ -219,6 +261,42 @@ const translations = {
     qrLabels: 'QR Barcode Labels',
     relocationTasks: 'Relocation Tasks',
     language: 'Language',
+    apiErrors: {
+      INSUFFICIENT_RACK_CAPACITY: 'No rack has sufficient capacity for the {storageType} storage type.',
+      RACK_STORAGE_TYPE_INCOMPATIBLE: 'The rack cannot be changed to an incompatible storage type for its current stock.',
+      CANNOT_DELETE_NON_EMPTY_RACK: 'Cannot delete rack because it contains active stock!',
+      INVALID_RACK_CAPACITY: 'Rack capacity must be a positive integer.',
+      RACK_CAPACITY_BELOW_OCCUPANCY: 'New capacity cannot be lower than current active stock.',
+    },
+    safetyAssistant: {
+      title: 'EHS & MSDS Assistant',
+      subtitle: 'Local AI-powered emergency safety guidance based on official MSDS documents.',
+      selectChemical: 'Select Chemical',
+      scopeTitle: 'Document scope',
+      scopeNote: 'Responses are generated only from the official MSDS section of the selected chemical.',
+      quickTitle: 'Quick emergency questions',
+      quickDescription: 'Select a frequently used question for an operation in progress.',
+      askTitle: 'Operator question',
+      askPlaceholder: 'Ask an emergency or safety question...',
+      askButton: 'Ask AI',
+      loadingText: 'Scanning MSDS document and generating response...',
+      assistantResponse: 'ASSISTANT RESPONSE',
+      verifiedBadge: 'MSDS Verified',
+      reviewBadge: 'Review required',
+      sourcePrefix: 'Source:',
+      readyTitle: 'Your safety question is ready to be answered.',
+      readyDescription: 'Select a quick question or write your operator question above.',
+      chemicalLoadFailed: 'Chemical list could not be loaded.',
+      fallbackChemicalNote: 'CC-202 remains available as the default.',
+      emptyQuestion: 'Please enter the operator question.',
+      answerFailed: 'The assistant could not respond. Please check that the Ollama service is running.',
+      quickChips: {
+        fire: 'Can it be extinguished with water if ignited?',
+        firstAid: 'What is the first aid procedure for skin contact?',
+        spill: 'How to handle spills if a barrel is punctured?',
+        storage: 'What are the safe storage and shelf temperature conditions?',
+      },
+    },
 
     // Dashboard
     dashboardTitle: 'System Overview',
@@ -256,6 +334,7 @@ const translations = {
         available: 'Available',
     expired: 'Expired',
     depleted: 'Depleted',
+    unitConsumedNotification: '{barcode} was consumed by the mobile terminal.',
     expDate: 'Exp Date',
 
     // Relocation Tasks
@@ -279,6 +358,7 @@ const translations = {
     capacity: 'Capacity',
     storageType: 'Storage Type',
     general: 'General',
+    solvent: 'Solvent',
     flammable: 'Flammable',
     corrosive: 'Corrosive',
     paint: 'Paint',
@@ -294,6 +374,10 @@ const translations = {
     allowPopups: 'Allow pop-ups to print the label.',
     addressTypeUpdated: 'storage type updated.',
     addressTypeUpdateFailed: 'Storage type could not be updated.',
+    rackDeleteConfirm: 'Are you sure you want to delete this rack?',
+    rackDeleted: 'Rack deleted successfully.',
+    rackDeleteFailed: 'Rack could not be deleted.',
+    rackCapacityRequired: 'Capacity',
     targetRackLabel: 'TARGET RACK LABEL',
     storage: 'Storage',
     batchesTitle: 'Raw Material Batches',
@@ -405,7 +489,10 @@ export function LanguageProvider({ children }) {
     setLanguageState(lang);
   }, []);
 
-  const t = useCallback((key) => translations[language]?.[key] || translations.tr?.[key] || key, [language]);
+  const t = useCallback((key) => {
+    const resolve = (dictionary) => key.split('.').reduce((value, part) => value?.[part], dictionary);
+    return resolve(translations[language]) || resolve(translations.tr) || key;
+  }, [language]);
   const contextValue = useMemo(() => ({ language, setLanguage, t }), [language, setLanguage, t]);
 
   return (

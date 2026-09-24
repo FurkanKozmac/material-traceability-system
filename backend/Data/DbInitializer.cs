@@ -201,5 +201,143 @@ public static class DbInitializer
             context.RelocationTasks.Add(relocationTask);
             await context.SaveChangesAsync();
         }
+
+        await ReconcileIndustrialRackDataAsync(context);
+    }
+
+    private static async Task ReconcileIndustrialRackDataAsync(MtsDbContext context)
+    {
+        var desiredRacks = new Dictionary<string, (int Capacity, string StorageType)>
+        {
+            ["RACK-P-01"] = (20, "PAINT"),
+            ["RACK-P-02"] = (20, "PAINT"),
+            ["RACK-S-01"] = (15, "SOLVENT"),
+            ["RACK-F-01"] = (10, "FLAMMABLE"),
+            ["RACK-C-01"] = (10, "CORROSIVE")
+        };
+
+        var addresses = await context.Addresses.Include(a => a.Units).ToListAsync();
+        foreach (var (code, definition) in desiredRacks)
+        {
+            var address = addresses.FirstOrDefault(a => a.Code == code);
+            if (address is null)
+            {
+                address = new Address { Code = code };
+                context.Addresses.Add(address);
+                addresses.Add(address);
+            }
+
+            address.MaxCapacity = definition.Capacity;
+            address.StorageType = definition.StorageType;
+        }
+
+        await context.SaveChangesAsync();
+
+        var targetByStorageType = desiredRacks
+            .GroupBy(pair => pair.Value.StorageType)
+            .ToDictionary(group => group.Key, group => addresses.First(a => a.Code == group.First().Key));
+
+        var legacyAddresses = addresses
+            .Where(address => !desiredRacks.ContainsKey(address.Code))
+            .ToList();
+
+        foreach (var legacyAddress in legacyAddresses)
+        {
+            var storageType = legacyAddress.StorageType == "GENERAL" ? "SOLVENT" : legacyAddress.StorageType;
+            if (!targetByStorageType.TryGetValue(storageType, out var targetAddress))
+            {
+                targetAddress = targetByStorageType["SOLVENT"];
+            }
+
+            var activeUnits = legacyAddress.Units
+                .Where(unit => unit.Status != "Depleted")
+                .ToList();
+            var availableSlots = targetAddress.MaxCapacity - targetAddress.Units.Count(unit => unit.Status != "Depleted");
+
+            foreach (var unit in activeUnits.Take(Math.Max(availableSlots, 0)))
+            {
+                unit.AddressId = targetAddress.Id;
+                targetAddress.Units.Add(unit);
+            }
+
+            foreach (var unit in activeUnits.Skip(Math.Max(availableSlots, 0)))
+            {
+                unit.Status = "Depleted";
+                unit.ConsumedAt ??= DateTime.UtcNow;
+                unit.AddressId = null;
+            }
+
+            var relatedTasks = await context.RelocationTasks
+                .Where(task => task.FromAddressId == legacyAddress.Id || task.ToAddressId == legacyAddress.Id)
+                .ToListAsync();
+            context.RelocationTasks.RemoveRange(relatedTasks);
+            context.Addresses.Remove(legacyAddress);
+        }
+
+        var clearCoat = await context.Chemicals.FirstOrDefaultAsync(c => c.ChemicalCode == "CC-202");
+        if (clearCoat is null)
+        {
+            context.Chemicals.Add(new Chemical
+            {
+                ChemicalCode = "CC-202",
+                Name = "Clear Coat",
+                Description = "Otomotiv gövde boyama için son kat vernik boyası",
+                StorageType = "PAINT",
+                Stopped = false
+            });
+        }
+        else
+        {
+            clearCoat.StorageType = "PAINT";
+            clearCoat.Stopped = false;
+        }
+
+        await EnsureChemicalAsync(
+            context,
+            "PP-101",
+            "Primer Paint",
+            "Otomotiv gövde boyama için astar boya",
+            "PAINT");
+        await EnsureChemicalAsync(
+            context,
+            "SL-301",
+            "Industrial Solvent",
+            "Endüstriyel solvent ve tiner karışımı",
+            "SOLVENT");
+
+        var generalChemicals = await context.Chemicals
+            .Where(chemical => chemical.StorageType == "GENERAL")
+            .ToListAsync();
+        foreach (var chemical in generalChemicals)
+            chemical.StorageType = "SOLVENT";
+
+        await context.SaveChangesAsync();
+    }
+
+    private static async Task EnsureChemicalAsync(
+        MtsDbContext context,
+        string chemicalCode,
+        string name,
+        string description,
+        string storageType)
+    {
+        var chemical = await context.Chemicals.FirstOrDefaultAsync(c => c.ChemicalCode == chemicalCode);
+        if (chemical is null)
+        {
+            context.Chemicals.Add(new Chemical
+            {
+                ChemicalCode = chemicalCode,
+                Name = name,
+                Description = description,
+                StorageType = storageType,
+                Stopped = false
+            });
+            return;
+        }
+
+        chemical.Name = name;
+        chemical.Description = description;
+        chemical.StorageType = storageType;
+        chemical.Stopped = false;
     }
 }

@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { Box, Typography, Button, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, CssBaseline, Avatar, AppBar, Toolbar, ButtonGroup } from '@mui/material';
-import { Dashboard as DashboardIcon, Science, Inventory2, LocationOn, Sell, QrCode2, SwapHoriz, ExitToApp } from '@mui/icons-material';
+import { Dashboard as DashboardIcon, Science, Inventory2, LocationOn, Sell, QrCode2, SwapHoriz, Shield, ExitToApp } from '@mui/icons-material';
 import { getStoredUser } from '../auth';
 import { useLanguage } from '../useLanguage';
 
@@ -23,6 +23,7 @@ export default function Layout() {
     { text: t('units'), key: 'units', path: '/units', icon: <Sell /> },
     { text: t('qrLabels'), key: 'qrLabels', path: '/qr-labels', icon: <QrCode2 /> },
     { text: t('relocationTasks'), key: 'relocationTasks', path: '/relocation-tasks', icon: <SwapHoriz /> },
+    { text: t('safetyAssistant.title'), key: 'safetyAssistant', path: '/safety-assistant', icon: <Shield /> },
   ];
 
   const handleLogout = async () => {

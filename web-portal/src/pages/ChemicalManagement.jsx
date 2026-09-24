@@ -14,6 +14,7 @@ export default function ChemicalManagement() {
   const [message, setMessage] = useState(null);
   const storageTypes = [
     { value: 'GENERAL', label: t('general') },
+    { value: 'SOLVENT', label: t('solvent') },
     { value: 'FLAMMABLE', label: t('flammable') },
     { value: 'CORROSIVE', label: t('corrosive') },
     { value: 'PAINT', label: t('paint') },

@@ -37,6 +37,8 @@ public class GlobalExceptionHandlerMiddleware(RequestDelegate next, ILogger<Glob
         {
             statusCode = (int)statusCode,
             message,
+            errorCode = ex is BusinessRuleException businessRule ? businessRule.ErrorCode : null,
+            details = ex is BusinessRuleException rule ? rule.Details : null,
             timestamp = DateTime.UtcNow
         };
 

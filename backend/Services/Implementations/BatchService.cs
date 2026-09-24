@@ -32,7 +32,8 @@ public class BatchService(MtsDbContext context) : IBatchService
             .Take(pageSize)
             .Select(b => new BatchResponse(
                 b.Id, b.BatchNo, b.Supplier, b.InitialQuantity, b.ExpirationDate,
-                b.ChemicalId, b.Chemical.Name, b.Units.Count))
+                b.ChemicalId, b.Chemical.Name,
+                b.Units.Count(u => u.Status == "InStock" || u.Status == "AVAILABLE")))
             .ToListAsync(ct);
         return new PagedResult<BatchResponse>(items, totalCount, page, pageSize);
     }
@@ -44,7 +45,8 @@ public class BatchService(MtsDbContext context) : IBatchService
             .Where(b => b.Id == id)
             .Select(b => new BatchResponse(
                 b.Id, b.BatchNo, b.Supplier, b.InitialQuantity, b.ExpirationDate,
-                b.ChemicalId, b.Chemical.Name, b.Units.Count))
+                b.ChemicalId, b.Chemical.Name,
+                b.Units.Count(u => u.Status == "InStock" || u.Status == "AVAILABLE")))
             .FirstOrDefaultAsync(ct);
     }
 
@@ -67,8 +69,8 @@ public class BatchService(MtsDbContext context) : IBatchService
         var initialAddress = await context.Addresses
             .AsNoTracking()
             .Where(a => a.StorageType == chemical.StorageType)
-            .Where(a => !a.MaxCapacity.HasValue ||
-                a.Units.Count(u => u.Status == "InStock" || u.Status == "AVAILABLE") + request.InitialQuantity <= a.MaxCapacity.Value)
+            .Where(a =>
+                a.Units.Count(u => u.Status == "InStock" || u.Status == "AVAILABLE") + request.InitialQuantity <= a.MaxCapacity)
             .OrderBy(a => a.Id)
             .Select(a => new
             {
@@ -81,7 +83,9 @@ public class BatchService(MtsDbContext context) : IBatchService
 
         if (initialAddress is null)
             throw new BusinessRuleException(
-                $"{chemical.StorageType} depolama türünde, partideki variller için yeterli kapasiteye sahip bir raf bulunamadı!");
+                $"{chemical.StorageType} depolama türünde, partideki variller için yeterli kapasiteye sahip bir raf bulunamadı!",
+                "INSUFFICIENT_RACK_CAPACITY",
+                new { storageType = chemical.StorageType });
 
         var lockedAddress = await context.Addresses
             .FromSqlInterpolated($"SELECT * FROM addresses WHERE \"Id\" = {initialAddress.Id} FOR UPDATE")
@@ -89,11 +93,12 @@ public class BatchService(MtsDbContext context) : IBatchService
         var currentOccupancy = await context.Units
             .CountAsync(u => u.AddressId == lockedAddress.Id && (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
 
-        if (lockedAddress.MaxCapacity.HasValue &&
-            currentOccupancy + request.InitialQuantity > lockedAddress.MaxCapacity.Value)
+        if (currentOccupancy + request.InitialQuantity > lockedAddress.MaxCapacity)
         {
             throw new BusinessRuleException(
-                $"Kabul rafı ({lockedAddress.Code}) parti miktarı için yeterli kapasiteye sahip değil!");
+                $"Kabul rafı ({lockedAddress.Code}) parti miktarı için yeterli kapasiteye sahip değil!",
+                "INSUFFICIENT_RACK_CAPACITY",
+                new { storageType = chemical.StorageType });
         }
 
         var batch = new Batch

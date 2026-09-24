@@ -2,12 +2,14 @@ using backend.Common.Exceptions;
 using backend.Data;
 using backend.DTOs;
 using backend.Entities;
+using backend.Hubs;
 using backend.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.AspNetCore.SignalR;
 
 namespace backend.Services.Implementations;
 
-public class UnitService(MtsDbContext context) : IUnitService
+public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubContext) : IUnitService
 {
     public async Task<List<UnitResponse>> SearchAsync(
         string? search, long? addressId, int size = 100, CancellationToken ct = default)
@@ -127,7 +129,7 @@ public class UnitService(MtsDbContext context) : IUnitService
                 .FirstAsync(ct);
             if (!string.Equals(placement.StorageType, chemicalStorageType, StringComparison.OrdinalIgnoreCase))
                 throw new BusinessRuleException("Birim, kimyasalın depolama türüyle uyumsuz bir rafa yerleştirilemez.");
-            if (placement.MaxCapacity.HasValue && placement.Occupancy >= placement.MaxCapacity.Value)
+            if (placement.Occupancy >= placement.MaxCapacity)
                 throw new BusinessRuleException("Raf kapasitesi dolu.");
         }
 
@@ -189,6 +191,12 @@ public class UnitService(MtsDbContext context) : IUnitService
         {
             throw new BusinessRuleException("Stok birimi başka bir işlem tarafından tüketildi. Lütfen tekrar taramayın.");
         }
+
+        await hubContext.Clients.All.SendAsync(
+            "UnitConsumed",
+            new { barcode = unit.Barcode, batchId = unit.BatchId },
+            ct);
+
         return (await GetByBarcodeAsync(unit.Barcode, ct))!;
     }
 }

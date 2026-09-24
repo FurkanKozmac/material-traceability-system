@@ -66,7 +66,7 @@ public class RelocationTaskService(MtsDbContext context) : IRelocationTaskServic
                 Address = a,
                 Occupancy = a.Units.Count(u => u.Status == "InStock" || u.Status == "AVAILABLE")
             })
-            .Where(x => !x.Address.MaxCapacity.HasValue || x.Occupancy < x.Address.MaxCapacity.Value)
+            .Where(x => x.Occupancy < x.Address.MaxCapacity)
             .OrderBy(x => x.Address.Code)
             .Select(x => new RelocationTargetResponse(
                 x.Address.Id,
@@ -74,7 +74,7 @@ public class RelocationTaskService(MtsDbContext context) : IRelocationTaskServic
                 x.Address.StorageType,
                 x.Address.MaxCapacity,
                 x.Occupancy,
-                x.Address.MaxCapacity.HasValue ? x.Address.MaxCapacity.Value - x.Occupancy : null))
+                x.Address.MaxCapacity - x.Occupancy))
             .ToListAsync(ct);
     }
 
@@ -106,7 +106,7 @@ public class RelocationTaskService(MtsDbContext context) : IRelocationTaskServic
 
         if (target is null)
             throw new InvalidOperationException("Hedef adres bulunamadı!");
-        if (target.MaxCapacity.HasValue && target.Occupancy >= target.MaxCapacity.Value)
+        if (target.Occupancy >= target.MaxCapacity)
             throw new InvalidOperationException($"Hedef adres ({target.Code}) maksimum kapasitesine ulaştı!");
         if (!string.Equals(target.StorageType, unit.Batch.Chemical.StorageType, StringComparison.OrdinalIgnoreCase))
             throw new BusinessRuleException(
@@ -165,8 +165,7 @@ public class RelocationTaskService(MtsDbContext context) : IRelocationTaskServic
         if (!string.Equals(targetAddress.StorageType, task.Unit.Batch.Chemical.StorageType, StringComparison.OrdinalIgnoreCase))
             throw new BusinessRuleException("Hedef raf kimyasalın depolama türüyle uyumlu değil!");
 
-        if (targetAddress.MaxCapacity.HasValue &&
-            targetAddress.Units.Count(u => u.Status == "InStock" || u.Status == "AVAILABLE") >= targetAddress.MaxCapacity.Value)
+        if (targetAddress.Units.Count(u => u.Status == "InStock" || u.Status == "AVAILABLE") >= targetAddress.MaxCapacity)
         {
             throw new BusinessRuleException(
                 $"Hedef raf ({targetAddress.Code}) maksimum kapasitesine ulaştığı için taşıma tamamlanamaz!");

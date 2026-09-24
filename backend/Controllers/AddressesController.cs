@@ -47,4 +47,21 @@ public class AddressesController(IAddressService addressService) : ControllerBas
         var updated = await addressService.UpdateStorageTypeAsync(id, request.StorageType, ct);
         return updated ? NoContent() : NotFound("Raf bulunamadı.");
     }
+
+    [HttpPut("{id:long}/capacity")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> UpdateCapacity(
+        long id, UpdateAddressCapacityRequest request, CancellationToken ct)
+    {
+        var updated = await addressService.UpdateCapacityAsync(id, request.MaxCapacity, ct);
+        return updated ? NoContent() : NotFound("Raf bulunamadı.");
+    }
+
+    [HttpDelete("{id:long}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Delete(long id, CancellationToken ct)
+    {
+        var deleted = await addressService.DeleteAsync(id, ct);
+        return deleted ? NoContent() : NotFound("Raf bulunamadı.");
+    }
 }

@@ -15,6 +15,7 @@ import {
   IconButton,
   Paper,
   Skeleton,
+  Snackbar,
   Stack,
   Table,
   TableBody,
@@ -29,6 +30,7 @@ import { Close, LocalPrintshop, QrCode2, SellOutlined, TaskAlt, Visibility } fro
 import QRCode from 'qrcode';
 import api from '../api';
 import { useLanguage } from '../useLanguage';
+import useSignalR from '../hooks/useSignalR';
 
 const isExpired = (unit) => Boolean(unit.expirationDate && new Date(unit.expirationDate) < new Date());
 const isAvailable = (unit) => ['InStock', 'AVAILABLE'].includes(unit.status) && !isExpired(unit);
@@ -62,6 +64,7 @@ export default function QrLabelManager() {
   const [previewQrDataUrl, setPreviewQrDataUrl] = useState('');
   const [printLabels, setPrintLabels] = useState([]);
   const [printMode, setPrintMode] = useState('units');
+  const [toast, setToast] = useState('');
 
   useEffect(() => {
     api.get('/batches')
@@ -108,16 +111,32 @@ export default function QrLabelManager() {
     return () => { active = false; };
   }, [previewUnit]);
 
+  useSignalR('UnitConsumed', (event) => {
+    if (!selectedBatch || Number(event?.batchId) !== Number(selectedBatch.id)) return;
+
+    const consumedUnit = labels.find((unit) => unit.barcode === event.barcode);
+    if (!consumedUnit || consumedUnit.status === 'Depleted') return;
+
+    setLabels((current) => current.map((unit) => (
+      unit.barcode === event.barcode
+        ? { ...unit, status: 'Depleted', addressCode: null }
+        : unit
+    )));
+    if (previewUnit?.barcode === event.barcode) setPreviewUnit(null);
+    setToast(t('unitConsumedNotification').replace('{barcode}', event.barcode));
+  });
+
   const allSelected = labels.length > 0 && selectedIds.size === labels.length;
   const partiallySelected = selectedIds.size > 0 && !allSelected;
   const selectedCount = selectedIds.size;
+  const activeUnitCount = labels.filter(isAvailable).length;
 
   const batchSummary = useMemo(() => selectedBatch ? [
     [t('batchSummaryLabel'), selectedBatch.batchNo],
     [t('chemicalSummaryLabel'), selectedBatch.chemicalName],
-    [t('total'), `${labels.length || selectedBatch.unitCount || 0} ${t('labelsCount')}`],
+    [t('total'), `${activeUnitCount} ${t('labelsCount')}`],
     [t('expDate'), formatDate(selectedBatch.expirationDate)],
-  ] : [], [selectedBatch, labels.length, t]);
+  ] : [], [selectedBatch, activeUnitCount, t]);
 
   const toggleLabel = (id) => {
     setSelectedIds((current) => {
@@ -186,7 +205,7 @@ export default function QrLabelManager() {
       <Paper className="batch-label-panel no-print" variant="outlined" sx={{ mb: 2.5, p: 2, borderRadius: 3, borderColor: '#bfdbfe', backgroundColor: '#f8fbff', display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap' }}>
         <Box className="batch-print-label" sx={{ width: 360, maxWidth: '100%', p: 2, border: '1.5px solid #0f172a', borderRadius: 2, backgroundColor: '#fff', display: 'grid', gridTemplateColumns: '120px 1fr', gap: 2, alignItems: 'center' }}>
           {batchQrDataUrl && <img src={batchQrDataUrl} alt={`QR BAT-${selectedBatch.batchNo}`} width="120" height="120" />}
-          <Box sx={{ minWidth: 0 }}><Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: '0.08em', color: '#475569' }}>{t('rawMaterialBatch').toUpperCase()}</Typography><Typography sx={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1.1rem', overflowWrap: 'anywhere' }}>BAT-{selectedBatch.batchNo}</Typography><Typography variant="body2" sx={{ mt: 0.5, fontWeight: 700 }}>{selectedBatch.chemicalName}</Typography><Typography variant="caption" display="block">{t('total')}: {labels.length || selectedBatch.unitCount || 0}</Typography><Typography variant="caption" display="block">{t('expDate')}: {formatDate(selectedBatch.expirationDate)}</Typography></Box>
+          <Box sx={{ minWidth: 0 }}><Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: '0.08em', color: '#475569' }}>{t('rawMaterialBatch').toUpperCase()}</Typography><Typography sx={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1.1rem', overflowWrap: 'anywhere' }}>BAT-{selectedBatch.batchNo}</Typography><Typography variant="body2" sx={{ mt: 0.5, fontWeight: 700 }}>{selectedBatch.chemicalName}</Typography><Typography variant="caption" display="block">{t('total')}: {activeUnitCount}</Typography><Typography variant="caption" display="block">{t('expDate')}: {formatDate(selectedBatch.expirationDate)}</Typography></Box>
         </Box>
         <Box sx={{ flex: 1, minWidth: 220 }}><Typography sx={{ fontWeight: 750, color: '#0f172a' }}>{t('batchOpeningLabel')}</Typography><Typography variant="body2" sx={{ color: '#64748b', mt: 0.5, mb: 1.5 }}>{t('batchOpeningLabelDesc')}</Typography><Button variant="outlined" startIcon={<QrCode2 />} onClick={() => print('batch')} disabled={!batchQrDataUrl} sx={{ textTransform: 'none', fontWeight: 700 }}>{t('printBatchLabel')}</Button></Box>
       </Paper>
@@ -231,6 +250,8 @@ export default function QrLabelManager() {
       </DialogContent>
       <DialogActions sx={{ p: 2 }}><Button onClick={() => setPreviewUnit(null)}>{t('close')}</Button><Button variant="contained" startIcon={<LocalPrintshop />} disabled={!previewQrDataUrl} onClick={() => { setPrintLabels([{ ...previewUnit, qrDataUrl: previewQrDataUrl }]); setPrintMode('units'); setPreviewUnit(null); requestAnimationFrame(() => requestAnimationFrame(() => window.print())); }}>{t('printThisLabel')}</Button></DialogActions>
     </Dialog>
+
+    <Snackbar open={Boolean(toast)} autoHideDuration={4500} onClose={() => setToast('')} message={toast} anchorOrigin={{ vertical: 'bottom', horizontal: 'right' }} />
 
     <style>{`
       .print-sheet { display: none; }
