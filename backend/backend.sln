@@ -2,6 +2,8 @@
 Microsoft Visual Studio Solution File, Format Version 12.00
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "backend", "backend.csproj", "{DE1F33CB-3660-4082-9FD3-5440862D755E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "backend.Tests", "..\backend.Tests\backend.Tests.csproj", "{1FA691E2-9C90-4060-9F1A-4430ADCC39A5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -12,5 +14,12 @@ Global
 		{DE1F33CB-3660-4082-9FD3-5440862D755E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{DE1F33CB-3660-4082-9FD3-5440862D755E}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{DE1F33CB-3660-4082-9FD3-5440862D755E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1FA691E2-9C90-4060-9F1A-4430ADCC39A5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1FA691E2-9C90-4060-9F1A-4430ADCC39A5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1FA691E2-9C90-4060-9F1A-4430ADCC39A5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1FA691E2-9C90-4060-9F1A-4430ADCC39A5}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
 	EndGlobalSection
 EndGlobal
