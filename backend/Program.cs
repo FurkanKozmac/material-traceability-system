@@ -7,6 +7,7 @@ using backend.Entities;
 using backend.Hubs;
 using backend.Middlewares;
 using backend.Services.Implementations;
+using backend.Services.Implementations.Barcodes;
 using backend.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -116,6 +117,10 @@ builder.Services.AddScoped<IBatchService, BatchService>();
 builder.Services.AddScoped<IAddressService, AddressService>();
 builder.Services.AddScoped<IRelocationTaskService, RelocationTaskService>();
 builder.Services.AddScoped<IMsdsRagService, MsdsRagService>();
+builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddScoped<IBarcodeGeneratorStrategy, QrCodeGeneratorStrategy>();
+builder.Services.AddScoped<IBarcodeGeneratorStrategy, Code128GeneratorStrategy>();
+builder.Services.AddScoped<BarcodeGeneratorFactory>();
 
 // Controller & JSON Ayarları
 builder.Services.AddControllers().AddJsonOptions(options =>

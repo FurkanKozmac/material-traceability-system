@@ -1,6 +1,5 @@
 import React, { useEffect, useState } from 'react';
 import { Alert, Box, Button, Dialog, DialogActions, DialogContent, DialogContentText, DialogTitle, MenuItem, Paper, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
-import QRCode from 'qrcode';
 import api from '../api';
 import { isAdmin } from '../auth';
 import { useLanguage } from '../useLanguage';
@@ -41,7 +40,8 @@ export default function AddressManagement() {
     const popup = window.open('', '_blank', 'width=520,height=620');
     if (!popup) { setMessage({ type: 'warning', text: t('allowPopups') }); return; }
     const payload = `ADR-${address.code}`;
-    const qr = await QRCode.toDataURL(payload, { width: 360, margin: 1, errorCorrectionLevel: 'M' });
+    const image = await api.get('/labels/preview', { params: { payload }, responseType: 'blob' });
+    const qr = URL.createObjectURL(image.data);
     popup.document.write(`<!doctype html><html><head><title>${payload}</title><style>@page{size:A4;margin:12mm}body{font-family:Arial;display:grid;place-items:start center}.label{width:90mm;border:2px solid #000;padding:8mm;text-align:center;break-inside:avoid}.label img{width:55mm;height:55mm}.code{font:900 24px monospace;margin:4mm 0}.meta{font-size:15px}</style></head><body><div class="label"><div>${t('targetRackLabel')}</div><img src="${qr}"/><div class="code">${payload}</div><div class="meta">${storageTypeLabel(address.storageType)} ${t('storage')} · ${t('capacity')}: ${address.maxCapacity ?? t('unlimited')}</div></div><script>onload=()=>{print();onafterprint=()=>close();}</script></body></html>`);
     popup.document.close();
   };

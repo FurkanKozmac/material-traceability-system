@@ -1,4 +1,5 @@
 using backend.Entities;
+using backend.Common.Enums;
 using Microsoft.EntityFrameworkCore;
 
 namespace backend.Data;
@@ -13,6 +14,7 @@ public class MtsDbContext(DbContextOptions<MtsDbContext> options) : DbContext(op
     public DbSet<Unit> Units => Set<Unit>();
     public DbSet<RelocationTask> RelocationTasks => Set<RelocationTask>();
     public DbSet<RefreshToken> RefreshTokens => Set<RefreshToken>();
+    public DbSet<SystemSetting> SystemSettings => Set<SystemSetting>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -54,6 +56,16 @@ public class MtsDbContext(DbContextOptions<MtsDbContext> options) : DbContext(op
             e.HasIndex(t => new { t.UserId, t.ExpiresAt });
             e.Property(t => t.TokenHash).HasMaxLength(128).IsRequired();
             e.Property(t => t.ReplacedByTokenHash).HasMaxLength(128);
+        });
+
+        modelBuilder.Entity<SystemSetting>(e =>
+        {
+            e.ToTable("system_settings");
+            e.HasKey(s => s.Id);
+            e.Property(s => s.Id).ValueGeneratedNever();
+            e.Property(s => s.DefaultBarcodeFormat).HasColumnName("default_barcode_format").HasConversion<int>().HasDefaultValue(BarcodeFormat.QrCode);
+            e.Property(s => s.UpdatedAt).HasColumnName("updated_at").IsRequired();
+            e.HasData(new SystemSetting { Id = 1, DefaultBarcodeFormat = BarcodeFormat.QrCode, UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
         });
 
         // 2. Chemicals

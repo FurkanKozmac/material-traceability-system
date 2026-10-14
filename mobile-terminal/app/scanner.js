@@ -136,7 +136,7 @@ export default function ScannerScreen() {
       </View>}
 
       {permission?.granted ? <View style={styles.cameraBox}>
-        <CameraView style={StyleSheet.absoluteFillObject} barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={scanned ? undefined : handleCameraScan} />
+        <CameraView style={StyleSheet.absoluteFillObject} barcodeScannerSettings={{ barcodeTypes: ['qr', 'code128'] }} onBarcodeScanned={scanned ? undefined : handleCameraScan} />
         <View style={styles.reticle} />
       </View> : <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
         <Text style={styles.buttonText}>{t('enableCamera')}</Text>

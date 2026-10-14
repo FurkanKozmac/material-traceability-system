@@ -27,7 +27,6 @@ import {
   Typography,
 } from '@mui/material';
 import { Close, LocalPrintshop, QrCode2, SellOutlined, TaskAlt, Visibility } from '@mui/icons-material';
-import QRCode from 'qrcode';
 import api from '../api';
 import { useLanguage } from '../useLanguage';
 import useSignalR from '../hooks/useSignalR';
@@ -44,11 +43,10 @@ const getStatus = (unit, t) => {
 
 const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '-';
 
-const createQr = (value, width = 360) => QRCode.toDataURL(value, {
-  width,
-  margin: 1,
-  errorCorrectionLevel: 'M',
-});
+const createLabel = async (value) => {
+  const response = await api.get('/labels/preview', { params: { payload: value }, responseType: 'blob' });
+  return URL.createObjectURL(response.data);
+};
 
 export default function QrLabelManager() {
   const { t } = useLanguage();
@@ -92,7 +90,7 @@ export default function QrLabelManager() {
       .catch(() => active && setMessage({ type: 'error', text: t('batchLabelsLoadFailed') }))
       .finally(() => active && setLoadingLabels(false));
 
-    createQr(`BAT-${selectedBatch.batchNo}`, 240)
+    createLabel(`BAT-${selectedBatch.batchNo}`)
       .then((dataUrl) => active && setBatchQrDataUrl(dataUrl))
       .catch(() => active && setBatchQrDataUrl(''));
 
@@ -105,7 +103,7 @@ export default function QrLabelManager() {
       return undefined;
     }
     let active = true;
-    createQr(previewUnit.barcode, 420)
+    createLabel(previewUnit.barcode)
       .then((dataUrl) => active && setPreviewQrDataUrl(dataUrl))
       .catch(() => active && setPreviewQrDataUrl(''));
     return () => { active = false; };
@@ -158,7 +156,7 @@ export default function QrLabelManager() {
       const selected = labels.filter((unit) => selectedIds.has(unit.id));
       const printable = await Promise.all(selected.map(async (unit) => ({
         ...unit,
-        qrDataUrl: await createQr(unit.barcode, 420),
+        qrDataUrl: await createLabel(unit.barcode),
       })));
       setPrintLabels(printable);
     }
