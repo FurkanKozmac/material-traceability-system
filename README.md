@@ -1,6 +1,6 @@
 # Material Traceability System (MTS)
 
-Material Traceability System is an end-to-end industrial Warehouse Management System (WMS) ecosystem designed for chemical inventory tracking, lot expiration monitoring, automated shelf capacity verification, dual-QR relocation workflows, and barcode-driven mobile terminal operations.
+Material Traceability System is an end-to-end industrial Warehouse Management System (WMS) ecosystem designed for chemical inventory tracking, lot expiration monitoring, automated shelf capacity verification, dual-code relocation workflows, and barcode-driven mobile terminal operations.
 
 ---
 
@@ -29,16 +29,16 @@ Material Traceability System is an end-to-end industrial Warehouse Management Sy
 MaterialTraceabilitySystem/
 ├── backend/          .NET 10 Web API (EF Core 10, PostgreSQL 16, JWT & RBAC)
 ├── web-portal/       React + Vite Administration Dashboard (Material UI, Nginx)
-├── mobile-terminal/  React Native + Expo Barcode Terminal (Camera & QR Scanner)
+├── mobile-terminal/  React Native + Expo Barcode Terminal (Camera, QR & Code 128 Scanner)
 ├── docs/images/      Repository screenshots and visual assets
 ├── docker-compose.yml Full-stack Docker orchestration
 └── README.md
 ```
 
 ### Tech Stack
-- **Backend API:** ASP.NET Core (.NET 10), C# 13, Entity Framework Core 10, PostgreSQL 16, JWT Authentication, Scalar API Docs.
-- **Web Portal:** React 19, Vite, Material UI (MUI), Axios, QR Code Generation, Nginx.
-- **Mobile Terminal:** React Native, Expo Router, Expo Camera, SecureStore, AsyncStorage.
+- **Backend API:** ASP.NET Core (.NET 10), C# 13, Entity Framework Core 10, PostgreSQL 16, JWT Authentication, Scalar API Docs, QRCoder, BarcodeLib/SkiaSharp.
+- **Web Portal:** React 19, Vite, Material UI (MUI), Axios, backend-generated label previews, Nginx.
+- **Mobile Terminal:** React Native, Expo Router, Expo Camera (QR and Code 128 scanning), SecureStore, AsyncStorage.
 - **Infrastructure:** Docker, Docker Compose, Nginx Reverse Proxy.
 
 ---
@@ -95,9 +95,23 @@ npm start
 - **🔐 Authentication & Authorization:** Secure JWT token authentication with 30-min access tokens, 7-day refresh tokens, and granular Admin/Operator role permissions.
 - **🛑 Capacity & Storage Type Verification:** Automatic validation rules that prevent storing chemical materials on incompatible shelf types (`GENERAL`, `PAINT`, `FLAMMABLE`, `CORROSIVE`) or exceeding shelf capacity.
 - **📦 Batch-First QR Scanning:** Mandatory scanning of a Batch QR (`BAT-{BatchNo}`) before consuming individual units to enforce strict lot governance.
-- **🔄 Dual-QR Relocation Tasks:** Relocation tasks planned on the web dashboard require warehouse operators to scan both the physical Unit QR and the target Address QR (`ADR-{Code}`) on the mobile terminal.
-- **🖨️ QR Label Printing Manager:** Searchable batch selector, batch summary cards, selectable unit grids, and `@media print` layout optimized for A4 label printing.
+- **🏷️ Configurable QR & Code 128 Labels:** Administrators can choose the default label format in **Settings → Label Format Preference**. QR codes are the default; Code 128 is also available. The backend generates PNG label previews using cross-platform libraries, including in Linux Docker deployments.
+- **📱 Multi-format Mobile Scanning:** The mobile terminal camera reads both QR codes and Code 128 barcodes. Existing payloads remain unchanged: batches use `BAT-{BatchNo}`, and unit labels retain their stored `UNIT-`/`BAR-` barcode values.
+- **🔄 Dual-code Relocation Tasks:** Relocation tasks planned on the web dashboard require warehouse operators to scan both the physical Unit code and the target Address QR (`ADR-{Code}`) on the mobile terminal.
+- **🖨️ Label Printing Manager:** Searchable batch selector, batch summary cards, selectable unit grids, and `@media print` layout optimized for A4 label printing. Batch, unit, and address labels use the active system format and backend-generated PNG previews.
 - **🔍 Full-Text Search:** Case-insensitive search across chemicals, batch lot numbers, suppliers, barcodes, and warehouse shelf codes.
+
+### Label Format API
+
+The backend exposes authenticated endpoints for reading the active format, updating it (Admin only), and generating PNG previews:
+
+```text
+GET  /api/settings/barcode-format
+PUT  /api/settings/barcode-format   { "format": "QrCode" | "Code128" }
+GET  /api/labels/preview?payload=BAT-...
+```
+
+The active format is stored in the single-row `system_settings` table and defaults to `QrCode`. Label payloads continue to use the existing scanner-compatible text values; changing the visual format does not change the payload.
 
 ---
 
