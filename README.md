@@ -100,6 +100,7 @@ npm start
 
 - **🔐 Authentication & Authorization:** Secure JWT token authentication with 30-min access tokens, 7-day refresh tokens, and granular Admin/Operator role permissions.
 - **🛑 Capacity & Storage Type Verification:** Automatic validation rules that prevent storing chemical materials on incompatible shelf types (`GENERAL`, `PAINT`, `FLAMMABLE`, `CORROSIVE`) or exceeding shelf capacity.
+- **🧪 Fictional Demo Inventory:** `DEMO_DATA_ENABLED` seeds a repeatable set of fictional chemicals, batches, stock units, rack addresses, and relocation tasks. It defaults on in Development and off in Production.
 - **📦 Batch-First QR Scanning:** Mandatory scanning of a Batch QR (`BAT-{BatchNo}`) before consuming individual units to enforce strict lot governance.
 - **📨 Asynchronous Critical Stock Alerts:** Each chemical has a `MinStockThreshold` field (default `10`). When consuming or deleting an in-stock unit takes the chemical’s total active-unit count below the threshold, the backend queues a low-stock event and a background worker sends a formatted HTML email. A relocation checks stock but does not reduce the chemical’s total stock. Administrators can set the notification recipient and enable or disable alerts in **Settings → Critical Stock and Notifications**.
 - **🏷️ Configurable QR & Code 128 Labels:** Administrators can choose the default label format in **Settings → Label Format Preference**. QR codes are the default; Code 128 is also available. The backend generates PNG label previews using cross-platform libraries, including in Linux Docker deployments.
@@ -141,7 +142,15 @@ The low-stock event is published to an in-memory `System.Threading.Channels` que
 
 ## Live Demo
 
-When the public demo is intentionally enabled by setting `DEMO_USER_ENABLED=true`, sign in with the operational account **demo / demo123**. It has the `Operator` role: it can browse inventory, consume stock, and complete relocations, but cannot manage chemicals, addresses, stock units, or system settings. The account is disabled by default in Production; never use the sample password for an administrator account.
+For the intentionally public demo, enable both `DEMO_USER_ENABLED=true` and `DEMO_DATA_ENABLED=true`. Sign in with the operational account **demo / demo123**. It has the `Operator` role: it can browse inventory, consume stock, and complete relocations, but cannot create or delete chemicals, batches, addresses, stock units, or relocation tasks, and cannot change system settings. The account and data flags default off in Production; never use the sample password for an administrator account.
+
+Try these predictable, entirely fictional barcode values:
+
+- Batch: `BAT-DEMO-BAT-002` (near expiry)
+- Unit: `BAR-DEMO-UNIT-001`
+- Destination rack: `ADR-DEMO-RACK-SOL-02`
+
+The demo inventory is reset daily by the guarded reset script. Reset removes business inventory only; admin/demo accounts, roles, refresh tokens, and system settings are preserved. It writes a PostgreSQL backup before deletion and retains the two newest backups. Restrict this automation to a demo-only deployment because it clears all business rows in the listed tables.
 
 ---
 
@@ -159,7 +168,7 @@ This repository applies **baseline security hardening for a public demo**. It is
 - Login endpoints allow ten attempts per client IP per 60 seconds by default. Override with `RateLimiting__Login__PermitLimit` and `RateLimiting__Login__WindowSeconds`. A short fixed window means clients sharing a public IP can affect one another. A second in-memory failure counter also throttles non-demo username/IP pairs after five failures for one minute; it is process-local and resets on restart. The demo account bypasses that username-based counter but remains covered by IP limiting.
 - Production API errors return a generic message without stack traces. Caddy sets `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and HSTS (`max-age=31536000`, without `includeSubDomains` or `preload`). API documentation endpoints are mapped only in Development.
 - Setting or rotating `ADMIN_PASSWORD` updates the existing seeded admin password hash at startup. `DEMO_USER_ENABLED` controls the demo Operator; it defaults off in Production and on in Development.
-- The local-only `scripts/reset-demo.sh` script can restore the seed data by deleting the named database volume. It refuses non-local `DOMAIN` values and requires an interactive confirmation.
+- `scripts/reset-demo.sh` supports public-domain demo hosts as well as localhost. Removing the localhost-only check adds no remotely callable endpoint: a reset still requires host-side execution with Docker access, `DEMO_DATA_ENABLED=true` in both the invoking environment and running backend, and the explicit `--confirm-demo-reset` argument. These checks limit accidental use, but the operator must still restrict the script and its full-database backups to a demo deployment; enabling the flag against production data and confirming will erase business rows.
 
 ### Endpoint → role matrix
 
@@ -199,15 +208,39 @@ Unless marked public, API endpoints require an authenticated access token. **Adm
 
 `/api/safetyassistant/ask` is anonymous and limited to ten requests per client IP per 60 seconds by default. Override it with `RateLimiting__SafetyAssistant__PermitLimit` and `RateLimiting__SafetyAssistant__WindowSeconds`. The service calls local Ollama at `http://localhost:11434` using Qwen and Nomic models; it contains no paid external API integration or API key, and Compose does not start an Ollama service. In the live deployment, Ollama is therefore unavailable and SafetyAssistant responds in fallback mode.
 
-### Resetting local demo data
+### Resetting demo data
 
-`scripts/reset-demo.sh` stops the Compose stack, removes only the named PostgreSQL data volume, then recreates services so migrations and seed data run again. It requires Docker and `jq`, and refuses a configured public `DOMAIN`. Interactive use asks for `RESET LOCAL DEMO DATA`. For an intentionally disposable local stack, the script also supports a guarded cron invocation; install a cron entry only on that machine, after confirming its `.env` uses `DOMAIN=localhost`:
+The EF Core database has these application tables (plus PostgreSQL's `public.__EFMigrationsHistory`, which EF Core uses to track schema migrations):
 
-```cron
-0 3 * * * DEMO_RESET_AUTOMATION=I_ACCEPT_LOCAL_DATA_LOSS DOMAIN=localhost /absolute/path/to/MaterialTraceabilitySystem/scripts/reset-demo.sh --yes >> /absolute/path/to/mts-reset.log 2>&1
+| Table | Reset behavior | Reason |
+|---|---|---|
+| `relocation_tasks` | Cleared | Demo workflow tasks refer to units and addresses; clear first. |
+| `units` | Cleared | Demo stock units refer to batches and may point to addresses. |
+| `batches` | Cleared | Demo batches refer to chemicals. |
+| `chemicals` | Cleared | Demo catalog records are recreated by the seeder. |
+| `addresses` | Cleared | Demo warehouse/rack locations are recreated after dependent rows are cleared. |
+| `users` | Preserved | Admin and demo accounts must remain available. |
+| `roles` | Preserved | Authorization roles remain linked to users. |
+| `user_roles` | Preserved | User-to-role assignments must remain intact. |
+| `refresh_tokens` | Preserved | Authentication state is retained; users are not deleted. |
+| `system_settings` | Preserved | Barcode and notification preferences are system configuration. |
+| `__EFMigrationsHistory` | Preserved | EF Core schema migration tracking is not business/demo data. |
+
+The reset clears the five business tables (`relocation_tasks`, `units`, `batches`, `chemicals`, `addresses`) in one transaction and in child-to-parent foreign-key order. No orphan rows are left: all rows that reference those business records are cleared in the same transaction, while user and role references are preserved. It creates a full `pg_dump` before deletion, including user password hashes, stores it under the ignored `backups/demo-reset/` directory with directory mode `0700` and dump-file mode `0600`, retains the two newest backups, restarts the backend to reseed data, and verifies `/api/health`. It does not remove the PostgreSQL volume or publish the database port. Run it only on a demo instance, because user-created business rows in the listed tables are also cleared.
+
+An intentional one-off invocation is:
+
+```bash
+DEMO_DATA_ENABLED=true ./scripts/reset-demo.sh --env-file /etc/mts/demo.env --confirm-demo-reset
 ```
 
-The sentinel is required for unattended runs. Cron is not installed or configured by this repository.
+The script exits without touching the database unless the flag and explicit confirmation are both present and the running backend also has `DEMO_DATA_ENABLED=true`. To schedule a daily reset, an operator may add a cron entry on the demo host; this repository does not install or configure cron:
+
+```cron
+0 4 * * * DEMO_DATA_ENABLED=true /absolute/path/to/MaterialTraceabilitySystem/scripts/reset-demo.sh --env-file /etc/mts/demo.env --confirm-demo-reset >> /var/log/mts-demo-reset.log 2>&1
+```
+
+The 04:00 schedule targets a low-traffic period. The reset restarts the backend, so users may see a brief service interruption while the demo data is reseeded and health checks recover.
 
 ### Deliberately deferred
 
@@ -226,8 +259,11 @@ cd web-portal && npm test
 # Mobile Terminal Unit Tests
 cd mobile-terminal && npm test
 
-# Backend Tests (SQLite tests plus PostgreSQL Testcontainers integration tests)
+# Backend tests (SQLite tests plus PostgreSQL Testcontainers tests)
 dotnet test backend.Tests/backend.Tests.csproj
+
+# Testcontainers tests require Docker; omit them with this filter when Docker is unavailable
+dotnet test backend.Tests/backend.Tests.csproj --filter "Category!=Testcontainers"
 
 # Backend Solution Build
 cd backend && dotnet build
