@@ -75,6 +75,7 @@ ehthumbs.db
 # Logs and local runtime artifacts
 *.log
 logs/
+backups/demo-reset/
 
 # Docker local data and overrides
 mts_postgres_data/
