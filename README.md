@@ -131,6 +131,8 @@ POST /api/settings/test-alert-email
 
 The test endpoint sends an email immediately to the configured recipient. In Docker Compose, Mailpit captures outgoing messages for local inspection at `http://localhost:8025`; it does not deliver them to an external mailbox. SMTP defaults are in `backend/appsettings.json`, and Compose overrides the host to `mailpit`. For local backend runs, start a Mailpit instance reachable at `localhost:1025`.
 
+If `SMTP_HOST` is omitted in Compose, it falls back to `localhost:1025` inside the backend container. Notification preference reads/updates only access the database and still work; the Admin test-email endpoint returns HTTP 503 with an SMTP configuration message when no server is reachable. Low-stock email failures are logged by the background worker and do not terminate it.
+
 The low-stock event is published to an in-memory `System.Threading.Channels` queue and processed by a hosted background service, so the stock request does not wait for SMTP delivery. The current alert is emitted when active stock crosses from at/above the threshold to below it.
 
 ---
@@ -152,8 +154,8 @@ This repository applies **baseline security hardening for a public demo**. It is
 - Caddy obtains HTTPS certificates for public DNS names configured through `DOMAIN`; `localhost` uses Caddy's local certificate. The web portal calls the API through relative `/api` and `/hubs` paths, so browser requests remain on the Caddy origin. Vite uses `VITE_DEV_API_TARGET` for local development.
 - Production startup requires configured `JWT_SECRET`, `ADMIN_PASSWORD`, and a non-default PostgreSQL connection password. Keep real values in an untracked `.env` file or deployment secret store; `.env.example` contains placeholders only.
 - CORS uses the comma-separated `ALLOWED_ORIGINS` list in Production. The app trusts forwarded client IP and scheme only from Caddy's fixed private Compose address.
-- Login endpoints allow five attempts per client IP per 60 seconds by default. Override with `RateLimiting__Login__PermitLimit` and `RateLimiting__Login__WindowSeconds`. A short fixed window means clients sharing a public IP can affect one another. A second in-memory failure counter also throttles non-demo username/IP pairs after five failures for one minute; it is process-local and resets on restart. The demo account bypasses that username-based counter but remains covered by IP limiting.
-- Production API errors return a generic message without stack traces. Caddy sets `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and HSTS headers. API documentation endpoints are mapped only in Development.
+- Login endpoints allow ten attempts per client IP per 60 seconds by default. Override with `RateLimiting__Login__PermitLimit` and `RateLimiting__Login__WindowSeconds`. A short fixed window means clients sharing a public IP can affect one another. A second in-memory failure counter also throttles non-demo username/IP pairs after five failures for one minute; it is process-local and resets on restart. The demo account bypasses that username-based counter but remains covered by IP limiting.
+- Production API errors return a generic message without stack traces. Caddy sets `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and HSTS (`max-age=31536000`, without `includeSubDomains` or `preload`). API documentation endpoints are mapped only in Development.
 - Setting or rotating `ADMIN_PASSWORD` updates the existing seeded admin password hash at startup. `DEMO_USER_ENABLED` controls the demo Operator; it defaults off in Production and on in Development.
 - The local-only `scripts/reset-demo.sh` script can restore the seed data by deleting the named database volume. It refuses non-local `DOMAIN` values and requires an interactive confirmation.
 
@@ -184,10 +186,16 @@ Unless marked public, API endpoints require an authenticated access token. **Adm
 | `/api/settings/barcode-format`, `/api/settings/notifications`, `/api/settings/test-alert-email` | PUT, PUT, POST | Admin |
 | `/api/labels/preview` | GET | Admin, Operator |
 | `/api/dashboard/aggregate`, `/api/dashboard/pending`, `/api/dashboard/recent-consumption` | GET | Admin, Operator |
-| `/api/warehouses`, `/api/shops`, `/api/types`, `/api/sectors`, `/api/stock-limits`, `/api/status`, `/api/material-parties` | GET | Admin, Operator |
+| `/api/warehouses` | GET | Admin, Operator |
+| `/api/shops` | GET | Admin, Operator |
+| `/api/types` | GET | Admin, Operator |
+| `/api/sectors` | GET | Admin, Operator |
+| `/api/stock-limits` | GET | Admin, Operator |
+| `/api/status` | GET | Admin, Operator |
+| `/api/material-parties` | GET | Admin, Operator |
 | `/api/users` (user management) | Any | Not implemented; returns 404 |
 
-`/api/safetyassistant/ask` is currently configured as anonymous. Add an abuse limit before publishing a paid or externally metered assistant service.
+`/api/safetyassistant/ask` is currently configured as anonymous. The service calls local Ollama at `http://localhost:11434` using Qwen and Nomic models; it contains no paid external API integration or API key, and Compose does not start an Ollama service. If Ollama is unavailable, it returns a fallback message. It has no request limit today, so consider one if local compute/resource abuse becomes a concern.
 
 ### Resetting local demo data
 

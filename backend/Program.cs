@@ -4,6 +4,7 @@ using System.Text;
 using System.Net;
 using System.Threading.RateLimiting;
 using backend.Data;
+using backend.Common.Security;
 using backend.Entities;
 using backend.Hubs;
 using backend.Middlewares;
@@ -29,25 +30,7 @@ var connectionString = builder.Configuration.GetConnectionString("DefaultConnect
 
 if (isProduction)
 {
-    if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret.Length < 32)
-        throw new InvalidOperationException("Production startup requires JWT_SECRET with at least 32 characters.");
-    if (string.IsNullOrWhiteSpace(adminPassword) || adminPassword.Length < 12 || adminPassword.Equals("admin123", StringComparison.OrdinalIgnoreCase))
-        throw new InvalidOperationException("Production startup requires ADMIN_PASSWORD with at least 12 non-default characters.");
-    if (string.IsNullOrWhiteSpace(connectionString))
-        throw new InvalidOperationException("Production startup requires ConnectionStrings__DefaultConnection.");
-
-    try
-    {
-        var parsedConnection = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
-        if (string.IsNullOrWhiteSpace(parsedConnection.Host) || string.IsNullOrWhiteSpace(parsedConnection.Database) ||
-            string.IsNullOrWhiteSpace(parsedConnection.Username) || string.IsNullOrWhiteSpace(parsedConnection.Password) || parsedConnection.Password.Length < 16 ||
-            parsedConnection.Password.Equals("postgres", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("ConnectionStrings__DefaultConnection must include host, database, user, and a non-default password of at least 16 characters.");
-    }
-    catch (ArgumentException ex)
-    {
-        throw new InvalidOperationException("ConnectionStrings__DefaultConnection is not a valid PostgreSQL connection string.", ex);
-    }
+    ProductionConfigurationValidator.Validate(jwtSecret, adminPassword, connectionString);
 }
 else
 {
@@ -101,17 +84,9 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    var loginLimit = builder.Configuration.GetValue("RateLimiting:Login:PermitLimit", 5);
-    var loginWindowSeconds = builder.Configuration.GetValue("RateLimiting:Login:WindowSeconds", 60);
-    options.AddPolicy("login", context => RateLimitPartition.GetFixedWindowLimiter(
-        context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
-        _ => new FixedWindowRateLimiterOptions
-        {
-            PermitLimit = loginLimit,
-            Window = TimeSpan.FromSeconds(loginWindowSeconds),
-            QueueLimit = 0,
-            AutoReplenishment = true
-        }));
+    var loginLimit = builder.Configuration.GetValue("RateLimiting:Login:PermitLimit", LoginRateLimitPartition.DefaultPermitLimit);
+    var loginWindowSeconds = builder.Configuration.GetValue("RateLimiting:Login:WindowSeconds", LoginRateLimitPartition.DefaultWindowSeconds);
+    options.AddPolicy("login", context => LoginRateLimitPartition.Create(context, loginLimit, loginWindowSeconds));
 });
 
 // PostgreSQL Veritabanı

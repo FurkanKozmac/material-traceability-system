@@ -8,7 +8,8 @@ namespace backend.Controllers;
 
 [ApiController]
 [Route("api/settings")]
-public sealed class SettingsController(ISettingsService settingsService, IEmailService emailService) : ControllerBase
+public sealed class SettingsController(ISettingsService settingsService, IEmailService emailService,
+    ILogger<SettingsController> logger) : ControllerBase
 {
     [HttpGet("barcode-format")]
     public async Task<IActionResult> GetBarcodeFormat(CancellationToken ct) =>
@@ -41,9 +42,18 @@ public sealed class SettingsController(ISettingsService settingsService, IEmailS
     public async Task<IActionResult> SendTestAlertEmail(CancellationToken ct)
     {
         var settings = await settingsService.GetNotificationSettingsAsync(ct);
-        await emailService.SendEmailAsync(settings.AlertEmailRecipient, "MTS test e-postası",
-            "<div style='font-family:Arial,sans-serif;padding:24px'><h2>MTS e-posta testi başarılı</h2><p>Kritik stok bildirim altyapısı çalışıyor.</p></div>", ct);
-        return Ok(new { message = "Test e-postası gönderildi." });
+        try
+        {
+            await emailService.SendEmailAsync(settings.AlertEmailRecipient, "MTS test e-postası",
+                "<div style='font-family:Arial,sans-serif;padding:24px'><h2>MTS e-posta testi başarılı</h2><p>Kritik stok bildirim altyapısı çalışıyor.</p></div>", ct);
+            return Ok(new { message = "Test e-postası gönderildi." });
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            logger.LogError(ex, "Test e-postası gönderilemedi; SMTP bağlantısını kontrol edin.");
+            return StatusCode(StatusCodes.Status503ServiceUnavailable,
+                new { message = "E-posta sunucusuna ulaşılamadı. SMTP_HOST ve SMTP_PORT ayarlarını kontrol edin." });
+        }
     }
 }
 

@@ -15,7 +15,8 @@ services:
       timeout: 5s
       retries: 5
     networks:
-      - mts-network
+      mts-network:
+        ipv4_address: 172.30.0.5
 
   backend:
     build:
