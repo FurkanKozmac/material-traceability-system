@@ -223,8 +223,7 @@ if (app.Environment.IsProduction())
 // Routing, CORS ve kimlik doğrulama sırası ASP.NET Core middleware gereksinimlerine göre ayarlanır.
 app.UseRouting();
 app.UseCors("ClientPolicy");
-if (!app.Environment.IsProduction())
-    app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())
