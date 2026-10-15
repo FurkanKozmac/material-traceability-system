@@ -28,10 +28,15 @@ public sealed class AuthorizationEndpointTests
     [InlineData("DELETE", "/api/chemicals/42")]
     [InlineData("DELETE", "/api/addresses/42")]
     [InlineData("DELETE", "/api/units/UNIT-42")]
+    [InlineData("POST", "/api/chemicals")]
+    [InlineData("POST", "/api/addresses")]
+    [InlineData("POST", "/api/batches")]
+    [InlineData("POST", "/api/units")]
+    [InlineData("POST", "/api/relocation-tasks")]
     [InlineData("PUT", "/api/settings/barcode-format")]
     [InlineData("PUT", "/api/settings/notifications")]
     [InlineData("POST", "/api/settings/test-alert-email")]
-    public async Task Operator_IsForbidden_FromDeleteAndSettingsEndpoints(string method, string path)
+    public async Task Operator_IsForbidden_FromCreateDeleteAndSettingsEndpoints(string method, string path)
     {
         using var host = CreateHost();
         using var client = host.GetTestClient();
@@ -44,6 +49,38 @@ public sealed class AuthorizationEndpointTests
         using var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Operator_CanCompleteRelocationTask()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Put, "/api/relocation-tasks/7/complete")
+        {
+            Content = new StringContent(
+                "{\"unitBarcode\":\"BAR-DEMO-UNIT-004\",\"targetAddressBarcode\":\"ADR-DEMO-RACK-SOL-02\"}",
+                Encoding.UTF8,
+                "application/json")
+        };
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Operator_CanConsumeSeededDemoUnit()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/units/BAR-DEMO-UNIT-001/consume");
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
@@ -111,8 +148,15 @@ public sealed class AuthorizationEndpointTests
             .ReturnsAsync(true);
         var addresses = new Mock<IAddressService>();
         var units = new Mock<IUnitService>();
+        units.Setup(service => service.ConsumeAsync("BAR-DEMO-UNIT-001", It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new UnitResponse(1, "BAR-DEMO-UNIT-001", "Depleted", null, null, 1,
+                "DEMO-BAT-001", "Polymer Stabilizer M-01", "DEMO-CHM-01", DateTime.UtcNow.AddDays(180), false));
         var settings = new Mock<ISettingsService>();
         var email = new Mock<IEmailService>();
+        var relocationTasks = new Mock<IRelocationTaskService>();
+        relocationTasks.Setup(service => service.CompleteTaskAsync(
+                It.IsAny<long>(), It.IsAny<CompleteRelocationTaskRequest>(), It.IsAny<long?>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(true);
 
         return new HostBuilder()
             .ConfigureWebHost(webHost => webHost
@@ -134,6 +178,8 @@ public sealed class AuthorizationEndpointTests
                 services.AddSingleton(units.Object);
                 services.AddSingleton(settings.Object);
                 services.AddSingleton(email.Object);
+                services.AddSingleton(relocationTasks.Object);
+                services.AddSingleton(Mock.Of<IBatchService>());
             })
             .Configure(app =>
             {

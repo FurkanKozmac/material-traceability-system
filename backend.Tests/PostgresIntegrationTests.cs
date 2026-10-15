@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using System.Text;
 using backend.Common.Exceptions;
+using backend.Data;
 using backend.DTOs;
 using backend.Entities;
 using backend.Services.Implementations;
@@ -10,8 +11,31 @@ using Microsoft.EntityFrameworkCore;
 namespace backend.Tests;
 
 [Collection(PostgresTestCollection.Name)]
+[Trait("Category", "Testcontainers")]
 public class PostgresIntegrationTests(PostgresTestDatabase database)
 {
+    [Fact]
+    [Trait("Category", "Integration")]
+    public async Task DemoSeededRelocationTask_CanBeCompletedOnCompatibleAvailableTarget()
+    {
+        await using var context = database.CreateContext();
+        await DemoDataSeeder.SeedAsync(context);
+        var task = await context.RelocationTasks
+            .Include(item => item.Unit)
+            .Include(item => item.ToAddress)
+            .SingleAsync(item => item.Unit.Barcode == "BAR-DEMO-UNIT-010" && item.Status == "Pending");
+        var sourceAddressId = task.FromAddressId;
+        var service = new RelocationTaskService(context, new LowStockChannel());
+
+        var completed = await service.CompleteTaskAsync(task.Id,
+            new CompleteRelocationTaskRequest(task.Unit.Barcode, $"ADR-{task.ToAddress.Code}"), null);
+
+        Assert.True(completed);
+        Assert.Equal("Completed", task.Status);
+        Assert.Equal(task.ToAddressId, task.Unit.AddressId);
+        Assert.NotEqual(sourceAddressId, task.Unit.AddressId);
+    }
+
     [Fact]
     [Trait("Category", "Integration")]
     public async Task Refresh_ValidRefreshToken_RotatesTokenPair()
