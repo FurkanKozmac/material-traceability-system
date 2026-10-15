@@ -69,9 +69,7 @@ builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
 var environmentOrigins = builder.Configuration["ALLOWED_ORIGINS"];
 var configuredOrigins = !string.IsNullOrWhiteSpace(environmentOrigins)
     ? environmentOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
-    : builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
-        ?? builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
-        ?? [];
+    : builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 
 builder.Services.AddCors(options =>
 {
