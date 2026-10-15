@@ -24,11 +24,27 @@ public sealed class SettingsService(MtsDbContext context) : ISettingsService
         return setting.DefaultBarcodeFormat;
     }
 
+    public async Task<NotificationSettingsResponse> GetNotificationSettingsAsync(CancellationToken ct = default)
+    {
+        var setting = await GetOrCreateAsync(ct);
+        return new NotificationSettingsResponse(setting.AlertEmailRecipient, setting.EnableLowStockAlerts);
+    }
+
+    public async Task<NotificationSettingsResponse> UpdateNotificationSettingsAsync(string recipient, bool enabled, CancellationToken ct = default)
+    {
+        var setting = await GetOrCreateAsync(ct);
+        setting.AlertEmailRecipient = recipient.Trim();
+        setting.EnableLowStockAlerts = enabled;
+        setting.UpdatedAt = DateTime.UtcNow;
+        await context.SaveChangesAsync(ct);
+        return new NotificationSettingsResponse(setting.AlertEmailRecipient, setting.EnableLowStockAlerts);
+    }
+
     private async Task<SystemSetting> GetOrCreateAsync(CancellationToken ct)
     {
         var setting = await context.SystemSettings.SingleOrDefaultAsync(s => s.Id == 1, ct);
         if (setting is not null) return setting;
-        setting = new SystemSetting { Id = 1, DefaultBarcodeFormat = BarcodeFormat.QrCode, UpdatedAt = DateTime.UtcNow };
+        setting = new SystemSetting { Id = 1, DefaultBarcodeFormat = BarcodeFormat.QrCode, AlertEmailRecipient = "alerts@mts.local", EnableLowStockAlerts = true, UpdatedAt = DateTime.UtcNow };
         context.SystemSettings.Add(setting);
         await context.SaveChangesAsync(ct);
         return setting;

@@ -48,6 +48,20 @@ public class UnitsController(IUnitService unitService) : ControllerBase
         }
     }
 
+    [HttpDelete("{barcode}")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> Delete(string barcode, CancellationToken ct)
+    {
+        try
+        {
+            return await unitService.DeleteAsync(barcode, ct) ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return BadRequest(ex.Message);
+        }
+    }
+
     [HttpPost("{barcode}/consume")]
     [Authorize(Roles = "Admin,Operator")]
     public async Task<ActionResult<UnitResponse>> Consume(string barcode, CancellationToken ct)

@@ -1,4 +1,5 @@
 using backend.Common.Exceptions;
+using backend.Common.Events;
 using backend.Data;
 using backend.DTOs;
 using backend.Entities;
@@ -7,7 +8,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace backend.Services.Implementations;
 
-public class RelocationTaskService(MtsDbContext context) : IRelocationTaskService
+public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowStockChannel) : IRelocationTaskService
 {
     private static readonly Func<MtsDbContext, IQueryable<RelocationTaskResponse>> Project = context =>
         context.RelocationTasks.AsNoTracking().Select(t => new RelocationTaskResponse(
@@ -171,6 +172,7 @@ public class RelocationTaskService(MtsDbContext context) : IRelocationTaskServic
                 $"Hedef raf ({targetAddress.Code}) maksimum kapasitesine ulaştığı için taşıma tamamlanamaz!");
         }
 
+        var previousStock = await context.Units.CountAsync(u => u.Batch.ChemicalId == task.Unit.Batch.ChemicalId && (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
         task.Unit.AddressId = task.ToAddressId;
         task.Unit.Version++;
         task.Status = "Completed";
@@ -180,6 +182,12 @@ public class RelocationTaskService(MtsDbContext context) : IRelocationTaskServic
         {
             await context.SaveChangesAsync(ct);
             await transaction.CommitAsync(ct);
+            var remainingStock = await context.Units.CountAsync(u => u.Batch.ChemicalId == task.Unit.Batch.ChemicalId && (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
+            var threshold = task.Unit.Batch.Chemical.MinStockThreshold;
+            if (previousStock >= threshold && remainingStock < threshold)
+                await lowStockChannel.PublishAlertAsync(new LowStockAlertEvent(checked((int)task.Unit.Batch.ChemicalId),
+                    task.Unit.Batch.Chemical.Name, task.Unit.Batch.Chemical.ChemicalCode, task.Unit.Batch.BatchNo,
+                    remainingStock, threshold, DateTime.UtcNow), ct);
         }
         catch (DbUpdateConcurrencyException)
         {

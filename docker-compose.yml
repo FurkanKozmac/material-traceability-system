@@ -30,11 +30,23 @@ services:
       Jwt__Key: "${JWT_KEY:-MTS-DEVELOPMENT-ONLY-KEY-2026-NEVER-USE-IN-PRODUCTION-64-CHARS}"
       Jwt__Issuer: "${JWT_ISSUER:-MaterialTraceabilitySystem}"
       Jwt__Audience: "${JWT_AUDIENCE:-MtsClients}"
+      Smtp__Host: mailpit
+      Smtp__Port: 1025
     ports:
       - "${BACKEND_PORT:-5059}:5059"
     depends_on:
       db:
         condition: service_healthy
+    networks:
+      - mts-network
+
+  mailpit:
+    image: axllent/mailpit:latest
+    container_name: mts-mailpit
+    restart: unless-stopped
+    ports:
+      - "1025:1025"
+      - "8025:8025"
     networks:
       - mts-network
 

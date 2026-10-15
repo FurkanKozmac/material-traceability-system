@@ -8,6 +8,7 @@ public class Chemical
     public string? Description { get; set; }
     public string? MsdsUrl { get; set; }
     public bool Stopped { get; set; } = false;
+    public int MinStockThreshold { get; set; } = 10;
     public string StorageType { get; set; } = "GENERAL";
     public ICollection<Batch> Batches { get; set; } = [];
 }

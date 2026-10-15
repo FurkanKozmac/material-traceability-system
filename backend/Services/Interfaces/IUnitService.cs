@@ -9,4 +9,5 @@ public interface IUnitService
     Task<PagedResult<UnitResponse>> GetByAddressIdAsync(long addressId, int page = 1, int pageSize = 50, CancellationToken ct = default);
     Task<UnitResponse> CreateAsync(CreateUnitRequest request, CancellationToken ct = default);
     Task<UnitResponse> ConsumeAsync(string barcode, CancellationToken ct = default);
+    Task<bool> DeleteAsync(string barcode, CancellationToken ct = default);
 }

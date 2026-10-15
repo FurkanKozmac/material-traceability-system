@@ -1,4 +1,5 @@
 using backend.Common.Exceptions;
+using backend.Common.Events;
 using backend.Data;
 using backend.DTOs;
 using backend.Entities;
@@ -9,7 +10,7 @@ using Microsoft.AspNetCore.SignalR;
 
 namespace backend.Services.Implementations;
 
-public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubContext) : IUnitService
+public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubContext, ILowStockChannel lowStockChannel) : IUnitService
 {
     public async Task<List<UnitResponse>> SearchAsync(
         string? search, long? addressId, int size = 100, CancellationToken ct = default)
@@ -148,6 +149,29 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
         return (await GetByBarcodeAsync(unit.Barcode, ct))!;
     }
 
+    public async Task<bool> DeleteAsync(string barcode, CancellationToken ct = default)
+    {
+        var unit = await context.Units
+            .Include(u => u.Batch).ThenInclude(b => b.Chemical)
+            .FirstOrDefaultAsync(u => u.Barcode == barcode, ct);
+        if (unit is null) return false;
+        if (unit.Status != "InStock" && unit.Status != "AVAILABLE")
+            throw new BusinessRuleException("Yalnızca stokta bulunan birim silinebilir.");
+        if (await context.RelocationTasks.AnyAsync(t => t.UnitId == unit.Id, ct))
+            throw new BusinessRuleException("Taşıma geçmişi bulunan stok birimi silinemez.");
+
+        var previousStock = await context.Units.CountAsync(u => u.Batch.ChemicalId == unit.Batch.ChemicalId && (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
+        context.Units.Remove(unit);
+        await context.SaveChangesAsync(ct);
+        var remainingStock = await context.Units.CountAsync(u => u.Batch.ChemicalId == unit.Batch.ChemicalId && (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
+        var threshold = unit.Batch.Chemical.MinStockThreshold;
+        if (previousStock >= threshold && remainingStock < threshold)
+            await lowStockChannel.PublishAlertAsync(new LowStockAlertEvent(checked((int)unit.Batch.ChemicalId),
+                unit.Batch.Chemical.Name, unit.Batch.Chemical.ChemicalCode, unit.Batch.BatchNo,
+                remainingStock, threshold, DateTime.UtcNow), ct);
+        return true;
+    }
+
     public async Task<UnitResponse> ConsumeAsync(string barcode, CancellationToken ct = default)
     {
         var unit = await context.Units
@@ -167,6 +191,8 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
 
         if (unit.Batch.Chemical.Stopped)
             throw new BusinessRuleException("Durdurulmuş bir kimyasala ait varil tüketime verilemez!");
+
+        var previousStock = await context.Units.CountAsync(u => u.Batch.ChemicalId == unit.Batch.ChemicalId && (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
 
         var pendingTasks = await context.RelocationTasks
             .Where(t => t.UnitId == unit.Id && t.Status == "Pending")
@@ -190,6 +216,14 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
         catch (DbUpdateConcurrencyException)
         {
             throw new BusinessRuleException("Stok birimi başka bir işlem tarafından tüketildi. Lütfen tekrar taramayın.");
+        }
+
+        var remainingStock = await context.Units.CountAsync(u => u.Batch.ChemicalId == unit.Batch.ChemicalId && (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
+        if (previousStock >= unit.Batch.Chemical.MinStockThreshold && remainingStock < unit.Batch.Chemical.MinStockThreshold)
+        {
+            await lowStockChannel.PublishAlertAsync(new LowStockAlertEvent(
+                checked((int)unit.Batch.ChemicalId), unit.Batch.Chemical.Name, unit.Batch.Chemical.ChemicalCode,
+                unit.Batch.BatchNo, remainingStock, unit.Batch.Chemical.MinStockThreshold, DateTime.UtcNow), ct);
         }
 
         await hubContext.Clients.All.SendAsync(

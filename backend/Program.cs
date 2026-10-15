@@ -1,4 +1,5 @@
 using System.Text.Json.Serialization;
+using backend.Services.Implementations.Notifications;
 using System.Text;
 using System.Net;
 using System.Threading.RateLimiting;
@@ -118,6 +119,10 @@ builder.Services.AddScoped<IAddressService, AddressService>();
 builder.Services.AddScoped<IRelocationTaskService, RelocationTaskService>();
 builder.Services.AddScoped<IMsdsRagService, MsdsRagService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddSingleton<ILowStockChannel, LowStockChannel>();
+builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));
+builder.Services.AddScoped<IEmailService, MailKitEmailService>();
+builder.Services.AddHostedService<LowStockAlertBackgroundService>();
 builder.Services.AddScoped<IBarcodeGeneratorStrategy, QrCodeGeneratorStrategy>();
 builder.Services.AddScoped<IBarcodeGeneratorStrategy, Code128GeneratorStrategy>();
 builder.Services.AddScoped<BarcodeGeneratorFactory>();

@@ -64,8 +64,10 @@ public class MtsDbContext(DbContextOptions<MtsDbContext> options) : DbContext(op
             e.HasKey(s => s.Id);
             e.Property(s => s.Id).ValueGeneratedNever();
             e.Property(s => s.DefaultBarcodeFormat).HasColumnName("default_barcode_format").HasConversion<int>().HasDefaultValue(BarcodeFormat.QrCode);
+            e.Property(s => s.AlertEmailRecipient).HasColumnName("alert_email_recipient").IsRequired().HasMaxLength(320).HasDefaultValue("alerts@mts.local");
+            e.Property(s => s.EnableLowStockAlerts).HasColumnName("enable_low_stock_alerts").IsRequired().HasDefaultValue(true);
             e.Property(s => s.UpdatedAt).HasColumnName("updated_at").IsRequired();
-            e.HasData(new SystemSetting { Id = 1, DefaultBarcodeFormat = BarcodeFormat.QrCode, UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
+            e.HasData(new SystemSetting { Id = 1, DefaultBarcodeFormat = BarcodeFormat.QrCode, AlertEmailRecipient = "alerts@mts.local", EnableLowStockAlerts = true, UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc) });
         });
 
         // 2. Chemicals
@@ -80,6 +82,7 @@ public class MtsDbContext(DbContextOptions<MtsDbContext> options) : DbContext(op
             e.Property(c => c.MsdsUrl).HasColumnName("msds_url").HasMaxLength(500);
             e.Property(c => c.Stopped).HasColumnName("stopped").HasDefaultValue(false);
             e.Property(c => c.StorageType).HasColumnName("storage_type").IsRequired().HasMaxLength(30).HasDefaultValue("GENERAL");
+            e.Property(c => c.MinStockThreshold).HasColumnName("min_stock_threshold").HasDefaultValue(10);
         });
 
         // 3. Batches

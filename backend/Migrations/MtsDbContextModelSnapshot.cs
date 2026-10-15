@@ -130,6 +130,12 @@ namespace backend.Migrations
                         .HasColumnType("text")
                         .HasColumnName("description");
 
+                    b.Property<int>("MinStockThreshold")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("integer")
+                        .HasDefaultValue(10)
+                        .HasColumnName("min_stock_threshold");
+
                     b.Property<string>("MsdsUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -279,11 +285,25 @@ namespace backend.Migrations
                     b.Property<int>("Id")
                         .HasColumnType("integer");
 
+                    b.Property<string>("AlertEmailRecipient")
+                        .IsRequired()
+                        .ValueGeneratedOnAdd()
+                        .HasMaxLength(320)
+                        .HasColumnType("character varying(320)")
+                        .HasDefaultValue("alerts@mts.local")
+                        .HasColumnName("alert_email_recipient");
+
                     b.Property<int>("DefaultBarcodeFormat")
                         .ValueGeneratedOnAdd()
                         .HasColumnType("integer")
                         .HasDefaultValue(1)
                         .HasColumnName("default_barcode_format");
+
+                    b.Property<bool>("EnableLowStockAlerts")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("boolean")
+                        .HasDefaultValue(true)
+                        .HasColumnName("enable_low_stock_alerts");
 
                     b.Property<DateTime>("UpdatedAt")
                         .HasColumnType("timestamp with time zone")
@@ -297,7 +317,9 @@ namespace backend.Migrations
                         new
                         {
                             Id = 1,
+                            AlertEmailRecipient = "alerts@mts.local",
                             DefaultBarcodeFormat = 1,
+                            EnableLowStockAlerts = true,
                             UpdatedAt = new DateTime(2026, 1, 1, 0, 0, 0, 0, DateTimeKind.Utc)
                         });
                 });

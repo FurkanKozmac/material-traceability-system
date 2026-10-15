@@ -1,4 +1,5 @@
 using backend.Common.Enums;
+using System.ComponentModel.DataAnnotations;
 using backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
@@ -7,7 +8,7 @@ namespace backend.Controllers;
 
 [ApiController]
 [Route("api/settings")]
-public sealed class SettingsController(ISettingsService settingsService) : ControllerBase
+public sealed class SettingsController(ISettingsService settingsService, IEmailService emailService) : ControllerBase
 {
     [HttpGet("barcode-format")]
     public async Task<IActionResult> GetBarcodeFormat(CancellationToken ct) =>
@@ -22,6 +23,29 @@ public sealed class SettingsController(ISettingsService settingsService) : Contr
         var updated = await settingsService.UpdateBarcodeFormatAsync(format, ct);
         return Ok(new { format = updated.ToString() });
     }
+    [HttpGet("notifications")]
+    public async Task<IActionResult> GetNotifications(CancellationToken ct) =>
+        Ok(await settingsService.GetNotificationSettingsAsync(ct));
+
+    [HttpPut("notifications")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> UpdateNotifications([FromBody] UpdateNotificationSettingsRequest request, CancellationToken ct)
+    {
+        if (!new EmailAddressAttribute().IsValid(request.AlertEmailRecipient))
+            return BadRequest(new { message = "Geçerli bir bildirim e-posta adresi girilmelidir." });
+        return Ok(await settingsService.UpdateNotificationSettingsAsync(request.AlertEmailRecipient, request.EnableLowStockAlerts, ct));
+    }
+
+    [HttpPost("test-alert-email")]
+    [Authorize(Roles = "Admin")]
+    public async Task<IActionResult> SendTestAlertEmail(CancellationToken ct)
+    {
+        var settings = await settingsService.GetNotificationSettingsAsync(ct);
+        await emailService.SendEmailAsync(settings.AlertEmailRecipient, "MTS test e-postası",
+            "<div style='font-family:Arial,sans-serif;padding:24px'><h2>MTS e-posta testi başarılı</h2><p>Kritik stok bildirim altyapısı çalışıyor.</p></div>", ct);
+        return Ok(new { message = "Test e-postası gönderildi." });
+    }
 }
 
+public sealed record UpdateNotificationSettingsRequest([Required, EmailAddress] string AlertEmailRecipient, bool EnableLowStockAlerts);
 public sealed record UpdateBarcodeFormatRequest(string Format);
