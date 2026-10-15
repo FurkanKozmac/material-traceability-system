@@ -45,7 +45,7 @@ MaterialTraceabilitySystem/
 
 ## 🚀 Quick Start with Docker Compose
 
-Run the entire ecosystem (PostgreSQL 16, .NET 10 API, and Nginx React Portal) with a single command:
+Run the entire ecosystem (PostgreSQL 16, .NET 10 API, Nginx React Portal, and Mailpit SMTP test server) with a single command:
 
 ```bash
 # 1. Copy environment template
@@ -59,6 +59,8 @@ docker compose up --build -d
 - **Web Dashboard:** `http://localhost`
 - **Backend API:** `http://localhost:5059/api`
 - **Scalar Interactive API Docs:** `http://localhost:5059/scalar/v1`
+- **Mailpit Inbox (development email):** `http://localhost:8025`
+- **Mailpit SMTP:** `localhost:1025` (the backend uses `mailpit:1025` inside Docker)
 
 ---
 
@@ -95,6 +97,7 @@ npm start
 - **🔐 Authentication & Authorization:** Secure JWT token authentication with 30-min access tokens, 7-day refresh tokens, and granular Admin/Operator role permissions.
 - **🛑 Capacity & Storage Type Verification:** Automatic validation rules that prevent storing chemical materials on incompatible shelf types (`GENERAL`, `PAINT`, `FLAMMABLE`, `CORROSIVE`) or exceeding shelf capacity.
 - **📦 Batch-First QR Scanning:** Mandatory scanning of a Batch QR (`BAT-{BatchNo}`) before consuming individual units to enforce strict lot governance.
+- **📨 Asynchronous Critical Stock Alerts:** Each chemical has a `MinStockThreshold` field (default `10`). When consuming or deleting an in-stock unit takes the chemical’s total active-unit count below the threshold, the backend queues a low-stock event and a background worker sends a formatted HTML email. A relocation checks stock but does not reduce the chemical’s total stock. Administrators can set the notification recipient and enable or disable alerts in **Settings → Critical Stock and Notifications**.
 - **🏷️ Configurable QR & Code 128 Labels:** Administrators can choose the default label format in **Settings → Label Format Preference**. QR codes are the default; Code 128 is also available. The backend generates PNG label previews using cross-platform libraries, including in Linux Docker deployments.
 - **📱 Multi-format Mobile Scanning:** The mobile terminal camera reads both QR codes and Code 128 barcodes. Existing payloads remain unchanged: batches use `BAT-{BatchNo}`, and unit labels retain their stored `UNIT-`/`BAR-` barcode values.
 - **🔄 Dual-code Relocation Tasks:** Relocation tasks planned on the web dashboard require warehouse operators to scan both the physical Unit code and the target Address QR (`ADR-{Code}`) on the mobile terminal.
@@ -113,6 +116,21 @@ GET  /api/labels/preview?payload=BAT-...
 
 The active format is stored in the single-row `system_settings` table and defaults to `QrCode`. Label payloads continue to use the existing scanner-compatible text values; changing the visual format does not change the payload.
 
+### Critical Stock Notification API
+
+Notification preferences are stored in the same `system_settings` row. Read access requires authentication; updates and test email delivery are Admin-only:
+
+```text
+GET  /api/settings/notifications
+PUT  /api/settings/notifications
+     { "alertEmailRecipient": "alerts@mts.local", "enableLowStockAlerts": true }
+POST /api/settings/test-alert-email
+```
+
+The test endpoint sends an email immediately to the configured recipient. In Docker Compose, Mailpit captures outgoing messages for local inspection at `http://localhost:8025`; it does not deliver them to an external mailbox. SMTP defaults are in `backend/appsettings.json`, and Compose overrides the host to `mailpit`. For local backend runs, start a Mailpit instance reachable at `localhost:1025`.
+
+The low-stock event is published to an in-memory `System.Threading.Channels` queue and processed by a hosted background service, so the stock request does not wait for SMTP delivery. The current alert is emitted when active stock crosses from at/above the threshold to below it.
+
 ---
 
 ## 🧪 Testing
@@ -123,6 +141,9 @@ cd web-portal && npm test
 
 # Mobile Terminal Unit Tests
 cd mobile-terminal && npm test
+
+# Backend Tests (SQLite tests plus PostgreSQL Testcontainers integration tests)
+dotnet test backend.Tests/backend.Tests.csproj
 
 # Backend Solution Build
 cd backend && dotnet build
