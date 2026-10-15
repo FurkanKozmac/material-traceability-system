@@ -103,12 +103,14 @@ builder.Services.Configure<ForwardedHeadersOptions>(options =>
 builder.Services.AddRateLimiter(options =>
 {
     options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    var loginLimit = builder.Configuration.GetValue("RateLimiting:Login:PermitLimit", 5);
+    var loginWindowSeconds = builder.Configuration.GetValue("RateLimiting:Login:WindowSeconds", 60);
     options.AddPolicy("login", context => RateLimitPartition.GetFixedWindowLimiter(
         context.Connection.RemoteIpAddress?.ToString() ?? "unknown",
         _ => new FixedWindowRateLimiterOptions
         {
-            PermitLimit = 5,
-            Window = TimeSpan.FromMinutes(1),
+            PermitLimit = loginLimit,
+            Window = TimeSpan.FromSeconds(loginWindowSeconds),
             QueueLimit = 0,
             AutoReplenishment = true
         }));
