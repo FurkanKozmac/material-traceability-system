@@ -20,6 +20,46 @@ using Microsoft.AspNetCore.RateLimiting;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var isDevelopment = builder.Environment.IsDevelopment();
+var isProduction = builder.Environment.IsProduction();
+var jwtSecret = builder.Configuration["JWT_SECRET"];
+var adminPassword = builder.Configuration["ADMIN_PASSWORD"];
+var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
+
+if (isProduction)
+{
+    if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret.Length < 32)
+        throw new InvalidOperationException("Production startup requires JWT_SECRET with at least 32 characters.");
+    if (string.IsNullOrWhiteSpace(adminPassword) || adminPassword.Length < 12 || adminPassword.Equals("admin123", StringComparison.OrdinalIgnoreCase))
+        throw new InvalidOperationException("Production startup requires ADMIN_PASSWORD with at least 12 non-default characters.");
+    if (string.IsNullOrWhiteSpace(connectionString))
+        throw new InvalidOperationException("Production startup requires ConnectionStrings__DefaultConnection.");
+
+    try
+    {
+        var parsedConnection = new Npgsql.NpgsqlConnectionStringBuilder(connectionString);
+        if (string.IsNullOrWhiteSpace(parsedConnection.Host) || string.IsNullOrWhiteSpace(parsedConnection.Database) ||
+            string.IsNullOrWhiteSpace(parsedConnection.Username) || string.IsNullOrWhiteSpace(parsedConnection.Password) || parsedConnection.Password.Length < 16 ||
+            parsedConnection.Password.Equals("postgres", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("ConnectionStrings__DefaultConnection must include host, database, user, and a non-default password of at least 16 characters.");
+    }
+    catch (ArgumentException ex)
+    {
+        throw new InvalidOperationException("ConnectionStrings__DefaultConnection is not a valid PostgreSQL connection string.", ex);
+    }
+}
+else
+{
+    jwtSecret ??= "MTS-DEVELOPMENT-ONLY-KEY-2026-NEVER-USE-IN-PRODUCTION-64-CHARS";
+    adminPassword ??= "admin123";
+    connectionString ??= "Host=localhost;Port=5432;Database=mts_db;Username=postgres;Password=postgres";
+}
+
+builder.Configuration["Jwt:Key"] = jwtSecret;
+builder.Configuration["ADMIN_PASSWORD"] = adminPassword;
+builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
+
+
 // ==========================================
 // 1. SERVİS KAYITLARI (builder.Build ÖNCESİ)
 // ==========================================
@@ -167,7 +207,7 @@ using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<MtsDbContext>();
     await context.Database.MigrateAsync();
-    await DbInitializer.SeedAsync(context);
+    await DbInitializer.SeedAsync(context, builder.Configuration, builder.Environment.IsDevelopment());
 }
 
 app.Run();

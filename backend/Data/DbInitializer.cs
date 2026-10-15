@@ -1,11 +1,25 @@
 using backend.Entities;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Configuration;
 using Microsoft.EntityFrameworkCore;
 
 namespace backend.Data;
 
 public static class DbInitializer
 {
-    public static async Task SeedAsync(MtsDbContext context)
+    private static bool PasswordMatches(User user, string configuredPassword)
+    {
+        if (user.Password.StartsWith("$2", StringComparison.Ordinal))
+        {
+            try { return BCrypt.Net.BCrypt.Verify(configuredPassword, user.Password); }
+            catch (BCrypt.Net.SaltParseException) { return false; }
+        }
+        if (user.Password.StartsWith("AQAAAA", StringComparison.Ordinal))
+            return new PasswordHasher<User>().VerifyHashedPassword(user, user.Password, configuredPassword) != PasswordVerificationResult.Failed;
+        return user.Password == configuredPassword;
+    }
+
+    public static async Task SeedAsync(MtsDbContext context, IConfiguration configuration, bool isDevelopment)
     {
         var adminRole = await context.Roles.FirstOrDefaultAsync(r => r.Name == "Admin");
         if (adminRole is null)
@@ -23,27 +37,34 @@ public static class DbInitializer
 
         await context.SaveChangesAsync();
         
-        if (!await context.Users.AnyAsync(u => u.Username == "admin"))
+        var configuredAdminPassword = configuration["ADMIN_PASSWORD"];
+        if (string.IsNullOrWhiteSpace(configuredAdminPassword) && isDevelopment)
+            configuredAdminPassword = "admin123";
+        if (string.IsNullOrWhiteSpace(configuredAdminPassword))
+            throw new InvalidOperationException("ADMIN_PASSWORD must be configured before seeding the administrator account.");
+
+        var existingAdmin = await context.Users
+            .Include(u => u.Roles)
+            .FirstOrDefaultAsync(u => u.Username == "admin");
+        if (existingAdmin is null)
         {
-            var adminUser = new User
+            existingAdmin = new User
             {
                 Username = "admin",
-                Password = "admin123",
+                Password = BCrypt.Net.BCrypt.HashPassword(configuredAdminPassword),
                 AuthSource = "DB",
                 Active = true,
                 Roles = [adminRole]
             };
-            context.Users.Add(adminUser);
+            context.Users.Add(existingAdmin);
             await context.SaveChangesAsync();
         }
-
-        var existingAdmin = await context.Users
-            .Include(u => u.Roles)
-            .FirstAsync(u => u.Username == "admin");
-
-        if (!existingAdmin.Roles.Any(r => r.Name == "Admin"))
+        else
         {
-            existingAdmin.Roles.Add(adminRole);
+            if (!PasswordMatches(existingAdmin, configuredAdminPassword))
+                existingAdmin.Password = BCrypt.Net.BCrypt.HashPassword(configuredAdminPassword);
+            if (!existingAdmin.Roles.Any(r => r.Name == "Admin"))
+                existingAdmin.Roles.Add(adminRole);
             await context.SaveChangesAsync();
         }
 
