@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Identity;
 using Microsoft.IdentityModel.Tokens;
 using Scalar.AspNetCore;
 using Microsoft.AspNetCore.RateLimiting;
+using Microsoft.AspNetCore.HttpOverrides;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -65,22 +66,38 @@ builder.Configuration["ConnectionStrings:DefaultConnection"] = connectionString;
 // ==========================================
 
 // CORS: React ve Mobil cihazların çerez/token ile bağlanmasına izin ver
+var environmentOrigins = builder.Configuration["ALLOWED_ORIGINS"];
+var configuredOrigins = !string.IsNullOrWhiteSpace(environmentOrigins)
+    ? environmentOrigins.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+    : builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>()
+        ?? builder.Configuration.GetSection("AllowedOrigins").Get<string[]>()
+        ?? [];
+
 builder.Services.AddCors(options =>
 {
     options.AddPolicy("ClientPolicy", policy =>
     {
         if (builder.Environment.IsDevelopment())
         {
+            // Development clients may run on localhost or a private LAN address.
             policy.SetIsOriginAllowed(IsDevelopmentOrigin);
         }
         else
         {
-            var allowedOrigins = builder.Configuration.GetSection("AllowedOrigins").Get<string[]>() ?? [];
-            policy.WithOrigins(allowedOrigins);
+            policy.WithOrigins(configuredOrigins)
+                .SetIsOriginAllowedToAllowWildcardSubdomains();
         }
 
         policy.AllowAnyMethod().AllowAnyHeader().AllowCredentials();
     });
+});
+
+builder.Services.Configure<ForwardedHeadersOptions>(options =>
+{
+    options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+    options.ForwardLimit = 1;
+    // Caddy has this fixed address on the private Compose network. Do not trust arbitrary proxies.
+    options.KnownProxies.Add(IPAddress.Parse("172.30.0.2"));
 });
 
 builder.Services.AddRateLimiter(options =>
@@ -185,6 +202,8 @@ var app = builder.Build();
 // 3. HTTP BORU HATTI (app.Use... SIRALAMASI)
 // ==========================================
 
+// Forwarded headers are accepted only from the trusted Caddy container.
+app.UseForwardedHeaders();
 // Routing, CORS ve kimlik doğrulama sırası ASP.NET Core middleware gereksinimlerine göre ayarlanır.
 app.UseRouting();
 app.UseCors("ClientPolicy");
