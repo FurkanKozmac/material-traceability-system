@@ -24,7 +24,7 @@ export default function Layout() {
     { text: t('qrLabels'), key: 'qrLabels', path: '/qr-labels', icon: <QrCode2 /> },
     { text: t('relocationTasks'), key: 'relocationTasks', path: '/relocation-tasks', icon: <SwapHoriz /> },
     { text: t('safetyAssistant.title'), key: 'safetyAssistant', path: '/safety-assistant', icon: <Shield /> },
-    { text: 'Ayarlar', key: 'settings', path: '/settings', icon: <SettingsIcon /> },
+    { text: t('settings'), key: 'settings', path: '/settings', icon: <SettingsIcon /> },
   ];
 
   const handleLogout = async () => {
