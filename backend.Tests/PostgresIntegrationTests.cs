@@ -4,6 +4,7 @@ using backend.Common.Exceptions;
 using backend.DTOs;
 using backend.Entities;
 using backend.Services.Implementations;
+using backend.Services.Implementations.Notifications;
 using Microsoft.EntityFrameworkCore;
 
 namespace backend.Tests;
@@ -105,7 +106,7 @@ public class PostgresIntegrationTests(PostgresTestDatabase database)
         // Arrange
         await using var context = database.CreateContext();
         var (_, _, source, target, unit, task) = await AddRelocationAsync(context);
-        var service = new RelocationTaskService(context);
+        var service = new RelocationTaskService(context, new LowStockChannel());
 
         // Act
         var act = () => service.CompleteTaskAsync(task.Id, new CompleteRelocationTaskRequest(
@@ -132,7 +133,7 @@ public class PostgresIntegrationTests(PostgresTestDatabase database)
             Version = 1
         });
         await context.SaveChangesAsync();
-        var service = new RelocationTaskService(context);
+        var service = new RelocationTaskService(context, new LowStockChannel());
 
         // Act
         var act = () => service.CompleteTaskAsync(task.Id, new CompleteRelocationTaskRequest(
@@ -149,7 +150,7 @@ public class PostgresIntegrationTests(PostgresTestDatabase database)
         // Arrange
         await using var context = database.CreateContext();
         var (_, _, _, target, unit, task) = await AddRelocationAsync(context);
-        var service = new RelocationTaskService(context);
+        var service = new RelocationTaskService(context, new LowStockChannel());
 
         // Act
         var completed = await service.CompleteTaskAsync(task.Id, new CompleteRelocationTaskRequest(

@@ -145,7 +145,8 @@ var app = builder.Build();
 // 3. HTTP BORU HATTI (app.Use... SIRALAMASI)
 // ==========================================
 
-// CORS ve Hata Yakalama EN BAŞTA olmalı!
+// Routing, CORS ve kimlik doğrulama sırası ASP.NET Core middleware gereksinimlerine göre ayarlanır.
+app.UseRouting();
 app.UseCors("ClientPolicy");
 app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 app.UseRateLimiter();

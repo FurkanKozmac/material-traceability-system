@@ -2,6 +2,7 @@ using backend.Common.Exceptions;
 using backend.DTOs;
 using backend.Entities;
 using backend.Services.Implementations;
+using backend.Services.Implementations.Notifications;
 
 namespace backend.Tests;
 
@@ -29,7 +30,7 @@ public class RelocationAndAddressTests
         };
         context.RelocationTasks.Add(task);
         await context.SaveChangesAsync();
-        var service = new RelocationTaskService(context);
+        var service = new RelocationTaskService(context, new LowStockChannel());
 
         // Act
         var act = () => service.CompleteTaskAsync(task.Id, new CompleteRelocationTaskRequest(

@@ -3,6 +3,7 @@ using backend.DTOs;
 using backend.Entities;
 using backend.Hubs;
 using backend.Services.Implementations;
+using backend.Services.Implementations.Notifications;
 using Microsoft.AspNetCore.SignalR;
 using Moq;
 
@@ -19,7 +20,7 @@ public class BatchUnitServiceTests
         var (_, batch, address, _) = await TestData.AddUnitAsync(context, storageType: "PAINT");
         address.StorageType = "GENERAL";
         await context.SaveChangesAsync();
-        var service = new UnitService(context, CreateHub().Object);
+        var service = new UnitService(context, CreateHub().Object, new LowStockChannel());
 
         // Act
         var act = () => service.CreateAsync(new CreateUnitRequest(
@@ -36,7 +37,7 @@ public class BatchUnitServiceTests
         await using var database = await SqliteTestDatabase.CreateAsync();
         var context = database.Context;
         var (_, batch, address, _) = await TestData.AddUnitAsync(context, addressCapacity: 1);
-        var service = new UnitService(context, CreateHub().Object);
+        var service = new UnitService(context, CreateHub().Object, new LowStockChannel());
 
         // Act
         var act = () => service.CreateAsync(new CreateUnitRequest(
@@ -54,7 +55,7 @@ public class BatchUnitServiceTests
         var context = database.Context;
         var (_, _, _, unit) = await TestData.AddUnitAsync(
             context, expirationDate: DateTime.UtcNow.AddDays(-1));
-        var service = new UnitService(context, CreateHub().Object);
+        var service = new UnitService(context, CreateHub().Object, new LowStockChannel());
 
         // Act
         var act = () => service.ConsumeAsync(unit.Barcode);
@@ -70,7 +71,7 @@ public class BatchUnitServiceTests
         await using var database = await SqliteTestDatabase.CreateAsync();
         var context = database.Context;
         var (_, _, _, unit) = await TestData.AddUnitAsync(context, chemicalStopped: true);
-        var service = new UnitService(context, CreateHub().Object);
+        var service = new UnitService(context, CreateHub().Object, new LowStockChannel());
 
         // Act
         var act = () => service.ConsumeAsync(unit.Barcode);
@@ -102,7 +103,7 @@ public class BatchUnitServiceTests
         context.RelocationTasks.Add(task);
         await context.SaveChangesAsync();
         var hub = CreateHub();
-        var service = new UnitService(context, hub.Object);
+        var service = new UnitService(context, hub.Object, new LowStockChannel());
 
         // Act
         var result = await service.ConsumeAsync(unit.Barcode);
