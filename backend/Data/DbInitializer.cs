@@ -36,6 +36,34 @@ public static class DbInitializer
         }
 
         await context.SaveChangesAsync();
+
+        var demoSetting = configuration["DEMO_USER_ENABLED"];
+        var demoEnabled = isDevelopment;
+        if (!string.IsNullOrWhiteSpace(demoSetting) && !bool.TryParse(demoSetting, out demoEnabled))
+            throw new InvalidOperationException("DEMO_USER_ENABLED must be true or false.");
+
+        var demoUser = await context.Users.Include(u => u.Roles)
+            .FirstOrDefaultAsync(u => u.Username == "demo");
+        if (demoEnabled)
+        {
+            if (demoUser is null)
+            {
+                demoUser = new User { Username = "demo", AuthSource = "DB" };
+                context.Users.Add(demoUser);
+            }
+            demoUser.Active = true;
+            demoUser.AuthSource = "DB";
+            if (!PasswordMatches(demoUser, "demo123"))
+                demoUser.Password = BCrypt.Net.BCrypt.HashPassword("demo123");
+            demoUser.Roles.Clear();
+            demoUser.Roles.Add(operatorRole);
+            await context.SaveChangesAsync();
+        }
+        else if (demoUser is not null && demoUser.Active)
+        {
+            demoUser.Active = false;
+            await context.SaveChangesAsync();
+        }
         
         var configuredAdminPassword = configuration["ADMIN_PASSWORD"];
         if (string.IsNullOrWhiteSpace(configuredAdminPassword) && isDevelopment)

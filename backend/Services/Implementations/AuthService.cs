@@ -25,17 +25,23 @@ public class AuthService(
     public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         var failureKey = GetLoginFailureKey(request.Username);
-        EnsureLoginAllowed(failureKey);
+        var accountLockoutEnabled = !string.Equals(request.Username, "demo", StringComparison.OrdinalIgnoreCase);
+        if (accountLockoutEnabled)
+            EnsureLoginAllowed(failureKey);
+
+        BusinessRuleException LoginFailureForRequest(string message) =>
+            accountLockoutEnabled ? LoginFailure(failureKey, message) : new BusinessRuleException(message);
+
         if (!string.Equals(request.AuthSource ?? "DB", "DB", StringComparison.OrdinalIgnoreCase))
-            throw LoginFailure(failureKey, "LDAP kimlik doğrulaması henüz yapılandırılmamıştır.");
+            throw LoginFailureForRequest("LDAP kimlik doğrulaması henüz yapılandırılmamıştır.");
 
         var user = await GetUserAsync(request.Username, ct);
         if (user is null || !user.Active)
-            throw LoginFailure(failureKey, "Geçersiz kullanıcı adı veya şifre!");
+            throw LoginFailureForRequest("Geçersiz kullanıcı adı veya şifre!");
 
         var verification = VerifyPassword(user, request.Password);
         if (verification == PasswordVerificationResult.Failed)
-            throw LoginFailure(failureKey, "Geçersiz kullanıcı adı veya şifre!");
+            throw LoginFailureForRequest("Geçersiz kullanıcı adı veya şifre!");
 
         memoryCache.Remove(failureKey);
 
