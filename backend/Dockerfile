@@ -1,7 +1,7 @@
 # Multi-stage Dockerfile for .NET 10 REST API
 
 # --- Stage 1: Build & Publish ---
-FROM mcr.microsoft.com/dotnet/sdk:10.0 AS build
+FROM mcr.microsoft.com/dotnet/sdk:10.0@sha256:0d99ebf1ccad15037b5c98c9fe8979d6b8dbac23812feae2277a0b277b5c5ffa AS build
 WORKDIR /src
 
 # Cache dependency restoration
@@ -13,7 +13,7 @@ COPY . .
 RUN dotnet publish "backend.csproj" -c Release -o /app/publish /p:UseAppHost=false
 
 # --- Stage 2: Runtime ---
-FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS final
+FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine@sha256:819bd3649d8bf53f35527c68d62e17b348ef6f24ae73073f497f00a878348062 AS final
 WORKDIR /app
 
 # Non-root user execution for security

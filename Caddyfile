@@ -1,0 +1,16 @@
+# DOMAIN should be the public DNS name (for example, your-name.duckdns.org).
+# Caddy automatically obtains and renews a public HTTPS certificate for public names.
+# The localhost default uses Caddy's local development certificate.
+{$DOMAIN:localhost} {
+    encode zstd gzip
+
+    # Keep API and SignalR traffic on the private Docker network.
+    @api path /api /api/*
+    reverse_proxy @api backend:5059
+
+    @signalr path /hubs/*
+    reverse_proxy @signalr backend:5059
+
+    # The SPA is the fallback for page routes and static files.
+    reverse_proxy frontend:80
+}

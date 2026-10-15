@@ -12,8 +12,8 @@ public sealed class PostgresTestCollection : ICollectionFixture<PostgresTestData
 
 public sealed class PostgresTestDatabase : IAsyncLifetime
 {
-    private readonly PostgreSqlContainer container = new PostgreSqlBuilder("postgres:16-alpine")
-        .WithImage("postgres:16-alpine")
+    private readonly PostgreSqlContainer container = new PostgreSqlBuilder("postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297")
+        .WithImage("postgres:16.10-alpine@sha256:029660641a0cfc575b14f336ba448fb8a75fd595d42e1fa316b9fb4378742297")
         .Build();
 
     public async Task InitializeAsync()
