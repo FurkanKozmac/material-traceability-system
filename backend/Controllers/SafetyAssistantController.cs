@@ -2,6 +2,7 @@ using backend.DTOs;
 using backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace backend.Controllers;
 
@@ -12,6 +13,7 @@ public class SafetyAssistantController(IMsdsRagService ragService) : ControllerB
     // POST: /api/safetyassistant/ask
     [HttpPost("ask")]
     [AllowAnonymous]
+    [EnableRateLimiting("safety-assistant")]
     public async Task<ActionResult<SafetyAnswerResponse>> Ask(
         [FromBody] SafetyQuestionRequest request,
         CancellationToken ct)

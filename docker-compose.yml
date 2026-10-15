@@ -34,6 +34,8 @@ services:
       Jwt__Audience: ${JWT_AUDIENCE:-MtsClients}
       Smtp__Host: ${SMTP_HOST:-localhost}
       Smtp__Port: ${SMTP_PORT:-1025}
+      RateLimiting__SafetyAssistant__PermitLimit: ${RateLimiting__SafetyAssistant__PermitLimit:-10}
+      RateLimiting__SafetyAssistant__WindowSeconds: ${RateLimiting__SafetyAssistant__WindowSeconds:-60}
     depends_on:
       db:
         condition: service_healthy

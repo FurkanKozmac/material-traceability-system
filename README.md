@@ -57,6 +57,8 @@ docker compose up --build -d
 
 Only Caddy publishes ports 80 and 443. PostgreSQL, the API, and Nginx stay on the private Compose network. Mailpit is disabled by default; start it only for local email testing with `docker compose --profile dev up --build -d`.
 
+`POSTGRES_PASSWORD` initializes the PostgreSQL role only when the data volume is first created. Changing the environment value later does not change the password stored in an existing volume; update the database role and environment together, or provision a separate volume and migrate data before switching.
+
 ### Access URLs:
 - **Web Dashboard:** `http://localhost`
 - **Backend API:** `http://localhost/api`
@@ -131,7 +133,7 @@ POST /api/settings/test-alert-email
 
 The test endpoint sends an email immediately to the configured recipient. In Docker Compose, Mailpit captures outgoing messages for local inspection at `http://localhost:8025`; it does not deliver them to an external mailbox. SMTP defaults are in `backend/appsettings.json`, and Compose overrides the host to `mailpit`. For local backend runs, start a Mailpit instance reachable at `localhost:1025`.
 
-If `SMTP_HOST` is omitted in Compose, it falls back to `localhost:1025` inside the backend container. Notification preference reads/updates only access the database and still work; the Admin test-email endpoint returns HTTP 503 with an SMTP configuration message when no server is reachable. Low-stock email failures are logged by the background worker and do not terminate it.
+`.env.example` leaves `SMTP_HOST` blank. Compose then falls back to `localhost:1025` inside the backend container; the live deployment has no SMTP relay there, so notification preference reads/updates still work, while the Admin test-email endpoint returns HTTP 503 with an SMTP configuration message. Configure a real SMTP relay for live email delivery. For local email testing, start the Mailpit `dev` profile and set `SMTP_HOST=mailpit`. Low-stock email failures are logged by the background worker and do not terminate it.
 
 The low-stock event is published to an in-memory `System.Threading.Channels` queue and processed by a hosted background service, so the stock request does not wait for SMTP delivery. The current alert is emitted when active stock crosses from at/above the threshold to below it.
 
@@ -195,7 +197,7 @@ Unless marked public, API endpoints require an authenticated access token. **Adm
 | `/api/material-parties` | GET | Admin, Operator |
 | `/api/users` (user management) | Any | Not implemented; returns 404 |
 
-`/api/safetyassistant/ask` is currently configured as anonymous. The service calls local Ollama at `http://localhost:11434` using Qwen and Nomic models; it contains no paid external API integration or API key, and Compose does not start an Ollama service. If Ollama is unavailable, it returns a fallback message. It has no request limit today, so consider one if local compute/resource abuse becomes a concern.
+`/api/safetyassistant/ask` is anonymous and limited to ten requests per client IP per 60 seconds by default. Override it with `RateLimiting__SafetyAssistant__PermitLimit` and `RateLimiting__SafetyAssistant__WindowSeconds`. The service calls local Ollama at `http://localhost:11434` using Qwen and Nomic models; it contains no paid external API integration or API key, and Compose does not start an Ollama service. In the live deployment, Ollama is therefore unavailable and SafetyAssistant responds in fallback mode.
 
 ### Resetting local demo data
 

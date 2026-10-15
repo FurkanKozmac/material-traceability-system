@@ -1,6 +1,9 @@
 using System.Net;
 using System.Threading.RateLimiting;
 using backend.Common.Security;
+using backend.DTOs;
+using backend.Services.Interfaces;
+using Moq;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -63,6 +66,52 @@ public sealed class SecurityHardeningTests
     }
 
     [Fact]
+    public async Task SafetyAssistant_IsAnonymousAndRateLimitedPerForwardedIp()
+    {
+        var ragService = new Mock<IMsdsRagService>();
+        ragService.Setup(service => service.AskQuestionAsync(It.IsAny<SafetyQuestionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SafetyAnswerResponse("CHEM-1", "question", "answer", "section", true));
+
+        using var host = new HostBuilder()
+            .ConfigureWebHost(webHost => webHost
+                .UseTestServer()
+                .ConfigureServices(services =>
+                {
+                    services.Configure<ForwardedHeadersOptions>(options =>
+                    {
+                        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor;
+                        options.ForwardLimit = 1;
+                        options.KnownProxies.Clear();
+                        options.KnownIPNetworks.Clear();
+                        options.KnownProxies.Add(IPAddress.Loopback);
+                    });
+                    services.AddRouting();
+                    services.AddRateLimiter(options =>
+                    {
+                        options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+                        options.AddPolicy("safety-assistant", context => LoginRateLimitPartition.Create(context, 1, 60));
+                    });
+                    services.AddControllers().AddApplicationPart(typeof(backend.Controllers.SafetyAssistantController).Assembly);
+                    services.AddSingleton(ragService.Object);
+                })
+                .Configure(app =>
+                {
+                    app.UseForwardedHeaders();
+                    app.UseRouting();
+                    app.UseRateLimiter();
+                    app.UseEndpoints(endpoints => endpoints.MapControllers());
+                }))
+            .Start();
+
+        using var client = host.GetTestClient();
+        const string body = "{\"chemicalCode\":\"CHEM-1\",\"question\":\"How should it be stored?\"}";
+
+        Assert.Equal(HttpStatusCode.OK, (await SendSafetyQuestionAsync(client, body, "203.0.113.20")).StatusCode);
+        Assert.Equal(HttpStatusCode.TooManyRequests, (await SendSafetyQuestionAsync(client, body, "203.0.113.20")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await SendSafetyQuestionAsync(client, body, "203.0.113.21")).StatusCode);
+    }
+
+    [Fact]
     public void ProductionValidator_RejectsDefaultAdminPassword()
     {
         var exception = Assert.Throws<InvalidOperationException>(() =>
@@ -89,6 +138,16 @@ public sealed class SecurityHardeningTests
     private static async Task<HttpResponseMessage> SendLoginAsync(HttpClient client, string forwardedFor)
     {
         using var request = new HttpRequestMessage(HttpMethod.Post, "/api/auth/login");
+        request.Headers.Add("X-Forwarded-For", forwardedFor);
+        return await client.SendAsync(request);
+    }
+
+    private static async Task<HttpResponseMessage> SendSafetyQuestionAsync(HttpClient client, string body, string forwardedFor)
+    {
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/safetyassistant/ask")
+        {
+            Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json")
+        };
         request.Headers.Add("X-Forwarded-For", forwardedFor);
         return await client.SendAsync(request);
     }

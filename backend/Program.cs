@@ -87,6 +87,10 @@ builder.Services.AddRateLimiter(options =>
     var loginLimit = builder.Configuration.GetValue("RateLimiting:Login:PermitLimit", LoginRateLimitPartition.DefaultPermitLimit);
     var loginWindowSeconds = builder.Configuration.GetValue("RateLimiting:Login:WindowSeconds", LoginRateLimitPartition.DefaultWindowSeconds);
     options.AddPolicy("login", context => LoginRateLimitPartition.Create(context, loginLimit, loginWindowSeconds));
+
+    var safetyAssistantLimit = builder.Configuration.GetValue("RateLimiting:SafetyAssistant:PermitLimit", 10);
+    var safetyAssistantWindowSeconds = builder.Configuration.GetValue("RateLimiting:SafetyAssistant:WindowSeconds", 60);
+    options.AddPolicy("safety-assistant", context => LoginRateLimitPartition.Create(context, safetyAssistantLimit, safetyAssistantWindowSeconds));
 });
 
 // PostgreSQL Veritabanı
