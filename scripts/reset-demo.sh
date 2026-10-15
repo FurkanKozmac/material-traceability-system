@@ -21,10 +21,17 @@ if [[ -z "$volume_name" ]]; then
 fi
 
 echo "This permanently deletes the local MTS database volume: $volume_name"
-read -r -p 'Type RESET LOCAL DEMO DATA to continue: ' confirmation
-if [[ "$confirmation" != "RESET LOCAL DEMO DATA" ]]; then
-  echo "Reset cancelled."
-  exit 1
+if [[ "${1:-}" == "--yes" ]]; then
+  if [[ "${DEMO_RESET_AUTOMATION:-}" != "I_ACCEPT_LOCAL_DATA_LOSS" ]]; then
+    echo "Automated reset requires DEMO_RESET_AUTOMATION=I_ACCEPT_LOCAL_DATA_LOSS." >&2
+    exit 1
+  fi
+else
+  read -r -p 'Type RESET LOCAL DEMO DATA to continue: ' confirmation
+  if [[ "$confirmation" != "RESET LOCAL DEMO DATA" ]]; then
+    echo "Reset cancelled."
+    exit 1
+  fi
 fi
 
 docker compose down

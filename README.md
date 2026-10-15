@@ -45,7 +45,7 @@ MaterialTraceabilitySystem/
 
 ## 🚀 Quick Start with Docker Compose
 
-Run the entire ecosystem (PostgreSQL 16, .NET 10 API, Nginx React Portal, and Mailpit SMTP test server) with a single command:
+Run the ecosystem (PostgreSQL 16, .NET 10 API, React portal, and Caddy HTTPS reverse proxy) with a single command:
 
 ```bash
 # 1. Copy environment template
@@ -55,12 +55,14 @@ cp .env.example .env
 docker compose up --build -d
 ```
 
+Only Caddy publishes ports 80 and 443. PostgreSQL, the API, and Nginx stay on the private Compose network. Mailpit is disabled by default; start it only for local email testing with `docker compose --profile dev up --build -d`.
+
 ### Access URLs:
 - **Web Dashboard:** `http://localhost`
-- **Backend API:** `http://localhost:5059/api`
-- **Scalar Interactive API Docs:** `http://localhost:5059/scalar/v1`
-- **Mailpit Inbox (development email):** `http://localhost:8025`
-- **Mailpit SMTP:** `localhost:1025` (the backend uses `mailpit:1025` inside Docker)
+- **Backend API:** `http://localhost/api`
+- **Scalar Interactive API Docs:** available when running the backend in Development at `http://localhost:5059/scalar/v1` (not exposed by the production Compose stack)
+- **Mailpit Inbox (development email):** `http://localhost:8025` after starting the `dev` profile
+- **Mailpit SMTP:** `localhost:1025` after starting the `dev` profile (the backend uses `mailpit:1025` inside Docker)
 
 ---
 
@@ -72,7 +74,7 @@ cd backend
 dotnet restore
 dotnet run
 ```
-*Database automatically seeds default roles (`Admin`, `Operator`) and admin user (`admin` / `admin123`).*
+*In Development, the database seeds the default roles and the admin user `admin` / `admin123`; use a strong `ADMIN_PASSWORD` outside Development. The `demo` / `demo123` Operator account is enabled by default only in Development.*
 
 ### 2. Web Portal (React + Vite)
 ```bash
@@ -80,7 +82,7 @@ cd web-portal
 npm ci
 npm run dev
 ```
-*Access at `http://localhost:5173` (defaults to connecting to `http://localhost:5059/api`).*
+*Access at `http://localhost:5173` (Vite proxies `/api` and `/hubs` to `http://localhost:5059` by default; set `VITE_DEV_API_TARGET` to override it).*
 
 ### 3. Mobile Terminal (Expo)
 ```bash
@@ -130,6 +132,78 @@ POST /api/settings/test-alert-email
 The test endpoint sends an email immediately to the configured recipient. In Docker Compose, Mailpit captures outgoing messages for local inspection at `http://localhost:8025`; it does not deliver them to an external mailbox. SMTP defaults are in `backend/appsettings.json`, and Compose overrides the host to `mailpit`. For local backend runs, start a Mailpit instance reachable at `localhost:1025`.
 
 The low-stock event is published to an in-memory `System.Threading.Channels` queue and processed by a hosted background service, so the stock request does not wait for SMTP delivery. The current alert is emitted when active stock crosses from at/above the threshold to below it.
+
+---
+
+## Live Demo
+
+When the public demo is intentionally enabled by setting `DEMO_USER_ENABLED=true`, sign in with the operational account **demo / demo123**. It has the `Operator` role: it can browse inventory, consume stock, and complete relocations, but cannot manage chemicals, addresses, stock units, or system settings. The account is disabled by default in Production; never use the sample password for an administrator account.
+
+---
+
+## Security
+
+This repository applies **baseline security hardening for a public demo**. It is not a claim of production-grade security.
+
+### Protections in place
+
+- Caddy is the only public Compose service and publishes ports 80/443. The database, API, and portal communicate over a private Docker network; PostgreSQL uses a named volume and publishes no host port.
+- Mailpit runs only with the `dev` Compose profile and binds its UI/SMTP ports to loopback.
+- Caddy obtains HTTPS certificates for public DNS names configured through `DOMAIN`; `localhost` uses Caddy's local certificate. The web portal calls the API through relative `/api` and `/hubs` paths, so browser requests remain on the Caddy origin. Vite uses `VITE_DEV_API_TARGET` for local development.
+- Production startup requires configured `JWT_SECRET`, `ADMIN_PASSWORD`, and a non-default PostgreSQL connection password. Keep real values in an untracked `.env` file or deployment secret store; `.env.example` contains placeholders only.
+- CORS uses the comma-separated `ALLOWED_ORIGINS` list in Production. The app trusts forwarded client IP and scheme only from Caddy's fixed private Compose address.
+- Login endpoints allow five attempts per client IP per 60 seconds by default. Override with `RateLimiting__Login__PermitLimit` and `RateLimiting__Login__WindowSeconds`. A short fixed window means clients sharing a public IP can affect one another. A second in-memory failure counter also throttles non-demo username/IP pairs after five failures for one minute; it is process-local and resets on restart. The demo account bypasses that username-based counter but remains covered by IP limiting.
+- Production API errors return a generic message without stack traces. Caddy sets `X-Content-Type-Options`, `X-Frame-Options`, `Referrer-Policy`, and HSTS headers. API documentation endpoints are mapped only in Development.
+- Setting or rotating `ADMIN_PASSWORD` updates the existing seeded admin password hash at startup. `DEMO_USER_ENABLED` controls the demo Operator; it defaults off in Production and on in Development.
+- The local-only `scripts/reset-demo.sh` script can restore the seed data by deleting the named database volume. It refuses non-local `DOMAIN` values and requires an interactive confirmation.
+
+### Endpoint → role matrix
+
+Unless marked public, API endpoints require an authenticated access token. **Admin** and **Operator** identify application roles. Unlisted verbs/routes are not defined by the API.
+
+| Endpoint | Method | Required role |
+|---|---|---|
+| `/api/auth/login`, `/api/auth/login-web` | POST | Public; IP rate limited |
+| `/api/auth/refresh`, `/api/auth/logout` | POST | Public (refresh token required) |
+| `/api/health` | GET | Public |
+| `/api/safetyassistant/ask` | POST | Public |
+| `/api/chemicals`, `/api/chemicals/{id}` | GET | Admin, Operator |
+| `/api/chemicals`, `/api/chemicals/{id}` | POST, PUT, DELETE | Admin |
+| `/api/batches`, `/api/batches/{id}`, `/api/batches/{id}/units`, `/api/batches/barcode/{barcode}` | GET | Admin, Operator |
+| `/api/batches` | POST | Admin |
+| `/api/addresses`, `/api/addresses/{id}` | GET | Admin, Operator |
+| `/api/addresses` | POST, DELETE `/api/addresses/{id}`, PUT `/api/addresses/{id}/storage-type`, PUT `/api/addresses/{id}/capacity` | Admin |
+| `/api/units`, `/api/units/barcode/{barcode}`, `/api/units/address/{addressId}` | GET | Admin, Operator |
+| `/api/units` | POST, DELETE `/api/units/{barcode}` | Admin |
+| `/api/units/{barcode}/consume` | POST | Admin, Operator |
+| `/api/relocation-tasks`, `/api/relocation-tasks/eligible-targets/{unitId}` | GET | Admin, Operator |
+| `/api/relocation-tasks` | POST | Admin |
+| `/api/relocation-tasks/{id}/complete` | PUT | Admin, Operator |
+| `/api/relocation-tasks/{id}/cancel` | PUT | Admin |
+| `/api/settings/barcode-format`, `/api/settings/notifications` | GET | Admin, Operator |
+| `/api/settings/barcode-format`, `/api/settings/notifications`, `/api/settings/test-alert-email` | PUT, PUT, POST | Admin |
+| `/api/labels/preview` | GET | Admin, Operator |
+| `/api/dashboard/aggregate`, `/api/dashboard/pending`, `/api/dashboard/recent-consumption` | GET | Admin, Operator |
+| `/api/warehouses`, `/api/shops`, `/api/types`, `/api/sectors`, `/api/stock-limits`, `/api/status`, `/api/material-parties` | GET | Admin, Operator |
+| `/api/users` (user management) | Any | Not implemented; returns 404 |
+
+`/api/safetyassistant/ask` is currently configured as anonymous. Add an abuse limit before publishing a paid or externally metered assistant service.
+
+### Resetting local demo data
+
+`scripts/reset-demo.sh` stops the Compose stack, removes only the named PostgreSQL data volume, then recreates services so migrations and seed data run again. It requires Docker and `jq`, and refuses a configured public `DOMAIN`. Interactive use asks for `RESET LOCAL DEMO DATA`. For an intentionally disposable local stack, the script also supports a guarded cron invocation; install a cron entry only on that machine, after confirming its `.env` uses `DOMAIN=localhost`:
+
+```cron
+0 3 * * * DEMO_RESET_AUTOMATION=I_ACCEPT_LOCAL_DATA_LOSS DOMAIN=localhost /absolute/path/to/MaterialTraceabilitySystem/scripts/reset-demo.sh --yes >> /absolute/path/to/mts-reset.log 2>&1
+```
+
+The sentinel is required for unattended runs. Cron is not installed or configured by this repository.
+
+### Deliberately deferred
+
+- No Content Security Policy (CSP) is set because an incorrect policy can block the existing React app; review the app's inline/eval and asset needs before adding one.
+- This change does not add Trivy image scanning, a full-history Gitleaks scan, PostgreSQL backups, fail2ban, or VPS SSH hardening. These are deployment follow-ups.
+- The backend container already uses a non-root runtime user; no additional container user changes were made as part of this hardening work.
 
 ---
 
