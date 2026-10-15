@@ -14,6 +14,12 @@ public class GlobalExceptionHandlerMiddleware(RequestDelegate next, ILogger<Glob
         }
         catch (Exception ex)
         {
+            if (context.RequestServices.GetRequiredService<IHostEnvironment>().IsProduction() &&
+                ex is not NotFoundException and not BusinessRuleException and not InvalidOperationException)
+            {
+                throw;
+            }
+
             logger.LogError(ex, "Hata yakalandı: {Message}", ex.Message);
             await HandleExceptionAsync(context, ex);
         }

@@ -204,10 +204,25 @@ var app = builder.Build();
 
 // Forwarded headers are accepted only from the trusted Caddy container.
 app.UseForwardedHeaders();
+if (app.Environment.IsProduction())
+{
+    app.UseHsts();
+    app.UseExceptionHandler(handler => handler.Run(async context =>
+    {
+        context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+        context.Response.ContentType = "application/json";
+        await context.Response.WriteAsJsonAsync(new
+        {
+            statusCode = StatusCodes.Status500InternalServerError,
+            message = "Sunucu tarafında beklenmeyen bir hata oluştu."
+        });
+    }));
+}
 // Routing, CORS ve kimlik doğrulama sırası ASP.NET Core middleware gereksinimlerine göre ayarlanır.
 app.UseRouting();
 app.UseCors("ClientPolicy");
-app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
+if (!app.Environment.IsProduction())
+    app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
 app.UseRateLimiter();
 
 if (app.Environment.IsDevelopment())

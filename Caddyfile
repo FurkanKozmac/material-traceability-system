@@ -4,6 +4,14 @@
 {$DOMAIN:localhost} {
     encode zstd gzip
 
+    # Apply baseline browser protections at the public TLS edge. CSP is intentionally omitted.
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        Strict-Transport-Security "max-age=31536000; includeSubDomains"
+    }
+
     # Keep API and SignalR traffic on the private Docker network.
     @api path /api /api/*
     reverse_proxy @api backend:5059
