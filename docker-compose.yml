@@ -30,6 +30,10 @@ services:
       ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
       DEMO_USER_ENABLED: ${DEMO_USER_ENABLED:-}
       DEMO_DATA_ENABLED: ${DEMO_DATA_ENABLED:-}
+      OCR__Mode: ${OCR_MODE:-Remote}
+      OCR__Endpoint: ${OCR_ENDPOINT:-}
+      OCR__ApiKey: ${OCR_API_KEY:-}
+      OCR__SampleText: ${OCR_SAMPLE_TEXT:-}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       Jwt__Issuer: ${JWT_ISSUER:-MaterialTraceabilitySystem}
       Jwt__Audience: ${JWT_AUDIENCE:-MtsClients}

@@ -15,7 +15,7 @@ public class GlobalExceptionHandlerMiddleware(RequestDelegate next, ILogger<Glob
         catch (Exception ex)
         {
             if (context.RequestServices.GetRequiredService<IHostEnvironment>().IsProduction() &&
-                ex is not NotFoundException and not BusinessRuleException and not InvalidOperationException)
+                ex is not NotFoundException and not BusinessRuleException and not InvalidOperationException and not OcrServiceUnavailableException)
             {
                 throw;
             }
@@ -34,6 +34,7 @@ public class GlobalExceptionHandlerMiddleware(RequestDelegate next, ILogger<Glob
             NotFoundException => (HttpStatusCode.NotFound, ex.Message),
             BusinessRuleException => (HttpStatusCode.BadRequest, ex.Message),
             InvalidOperationException => (HttpStatusCode.BadRequest, ex.Message),
+            OcrServiceUnavailableException => (HttpStatusCode.ServiceUnavailable, ex.Message),
             _ => (HttpStatusCode.InternalServerError, "Sunucu tarafında beklenmeyen bir hata oluştu.")
         };
 

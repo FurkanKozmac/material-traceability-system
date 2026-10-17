@@ -1,5 +1,6 @@
 using System.Net;
 using System.Text;
+using System.Net.Http.Json;
 using backend.Common.Enums;
 using backend.Data;
 using backend.DTOs;
@@ -16,6 +17,7 @@ using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 using System.Security.Claims;
 using System.Text.Encodings.Web;
@@ -42,13 +44,24 @@ public sealed class AuthorizationEndpointTests
         using var client = host.GetTestClient();
         using var request = new HttpRequestMessage(new HttpMethod(method), path)
         {
-            Content = new StringContent("{}", Encoding.UTF8, "application/json")
+            Content = path == "/api/batches/scan-label"
+                ? CreateMultipartImageContent()
+                : new StringContent("{}", Encoding.UTF8, "application/json")
         };
         request.Headers.Add("X-Test-Roles", "Operator");
 
         using var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    private static MultipartFormDataContent CreateMultipartImageContent()
+    {
+        var content = new MultipartFormDataContent();
+        var image = new ByteArrayContent([1, 2, 3]);
+        image.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue("image/png");
+        content.Add(image, "image", "label.png");
+        return content;
     }
 
     [Fact]
@@ -81,6 +94,23 @@ public sealed class AuthorizationEndpointTests
         using var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Operator_CanScanLabelAndReceiveParsedSuggestions()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var content = CreateMultipartImageContent();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/batches/scan-label") { Content = content };
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+        var result = await response.Content.ReadFromJsonAsync<BatchLabelScanResultDto>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("OCR-LOT-42", result?.ExtractedLotNumber);
+        Assert.Equal("BAT-OCR-LOT-42", result?.SuggestedBarcodePayload);
     }
 
     [Fact]
@@ -157,6 +187,14 @@ public sealed class AuthorizationEndpointTests
         relocationTasks.Setup(service => service.CompleteTaskAsync(
                 It.IsAny<long>(), It.IsAny<CompleteRelocationTaskRequest>(), It.IsAny<long?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+        var ocr = new Mock<IOcrService>();
+        ocr.Setup(service => service.ExtractTextAsync(It.IsAny<Stream>(), It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync("SODIUM HYDROXIDE LOT: OCR-LOT-42 EXP: 2027-11-15");
+        var labelParser = new Mock<ILabelParserService>();
+        labelParser.Setup(service => service.ParseAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BatchLabelScanResultDto(1, "Sodium Hydroxide", "OCR-LOT-42",
+                new DateTime(2027, 11, 15, 0, 0, 0, DateTimeKind.Utc),
+                "SODIUM HYDROXIDE LOT: OCR-LOT-42 EXP: 2027-11-15", "BAT-OCR-LOT-42"));
 
         return new HostBuilder()
             .ConfigureWebHost(webHost => webHost
@@ -173,6 +211,7 @@ public sealed class AuthorizationEndpointTests
                         .Build();
                 });
                 services.AddControllers().AddApplicationPart(typeof(backend.Controllers.ChemicalController).Assembly);
+                services.AddDbContext<MtsDbContext>(options => options.UseSqlite("Data Source=:memory:"));
                 services.AddSingleton(chemical.Object);
                 services.AddSingleton(addresses.Object);
                 services.AddSingleton(units.Object);
@@ -180,6 +219,8 @@ public sealed class AuthorizationEndpointTests
                 services.AddSingleton(email.Object);
                 services.AddSingleton(relocationTasks.Object);
                 services.AddSingleton(Mock.Of<IBatchService>());
+                services.AddSingleton(ocr.Object);
+                services.AddSingleton(labelParser.Object);
             })
             .Configure(app =>
             {

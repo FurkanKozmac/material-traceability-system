@@ -99,6 +99,9 @@ builder.Services.AddDbContext<MtsDbContext>(options =>
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddHttpClient();
+builder.Services.AddHttpClient<IOcrService, OcrService>(client =>
+    client.Timeout = TimeSpan.FromSeconds(45));
+builder.Services.AddScoped<ILabelParserService, LabelParserService>();
 builder.Services.AddSignalR();
 
 var jwtKey = builder.Configuration["Jwt:Key"]

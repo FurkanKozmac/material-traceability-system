@@ -4,13 +4,43 @@ using backend.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
+using backend.Common.Exceptions;
 
 namespace backend.Controllers;
 
 [ApiController]
 [Route("api/batches")]
-public class BatchesController(IBatchService batchService, MtsDbContext context) : ControllerBase
+public class BatchesController(
+    IBatchService batchService,
+    MtsDbContext context,
+    IOcrService ocrService,
+    ILabelParserService labelParserService) : ControllerBase
 {
+    private const long MaxLabelImageBytes = 10 * 1024 * 1024;
+
+    [HttpPost("scan-label")]
+    [Authorize(Roles = "Admin,Operator")]
+    [Consumes("multipart/form-data")]
+    [RequestSizeLimit(MaxLabelImageBytes)]
+    public async Task<ActionResult<BatchLabelScanResultDto>> ScanLabel(
+        [FromForm] IFormFile? image,
+        CancellationToken ct)
+    {
+        if (image is null || image.Length == 0)
+            return BadRequest("Etiket görseli gereklidir.");
+        if (image.Length > MaxLabelImageBytes)
+            return StatusCode(StatusCodes.Status413PayloadTooLarge, "Görsel en fazla 10 MB olabilir.");
+        if (image.ContentType is not ("image/jpeg" or "image/png" or "image/webp"))
+            return BadRequest("Yalnızca JPEG, PNG veya WebP görselleri kabul edilir.");
+
+        await using var stream = image.OpenReadStream();
+        var rawText = await ocrService.ExtractTextAsync(stream, image.ContentType, ct);
+        if (string.IsNullOrWhiteSpace(rawText))
+            throw new OcrServiceUnavailableException("Görselden metin okunamadı.");
+
+        return Ok(await labelParserService.ParseAsync(rawText, ct));
+    }
+
     [HttpGet]
     public async Task<ActionResult<List<BatchResponse>>> GetAll(
         [FromQuery] string? search,
