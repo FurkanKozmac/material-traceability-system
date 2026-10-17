@@ -19,7 +19,7 @@ public class RelocationTasksController(IRelocationTaskService taskService) : Con
         Ok(await taskService.GetAllAsync(ct));
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Operator")]
     public async Task<ActionResult<RelocationTaskResponse>> Create(
         CreateRelocationTaskRequest request, CancellationToken ct)
     {

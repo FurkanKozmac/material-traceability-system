@@ -31,9 +31,9 @@ services:
       DEMO_USER_ENABLED: ${DEMO_USER_ENABLED:-}
       DEMO_DATA_ENABLED: ${DEMO_DATA_ENABLED:-}
       OCR__Mode: ${OCR_MODE:-Remote}
-      OCR__Endpoint: ${OCR_ENDPOINT:-}
-      OCR__ApiKey: ${OCR_API_KEY:-}
+      OCR__Endpoint: ${OCR_ENDPOINT:-http://ocr-service:8080/tesseract}
       OCR__SampleText: ${OCR_SAMPLE_TEXT:-}
+      Ocr__Languages: ${OCR_LANGUAGES:-eng+tur}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       Jwt__Issuer: ${JWT_ISSUER:-MaterialTraceabilitySystem}
       Jwt__Audience: ${JWT_AUDIENCE:-MtsClients}
@@ -44,9 +44,44 @@ services:
     depends_on:
       db:
         condition: service_healthy
+      ocr-service:
+        condition: service_healthy
     networks:
       mts-network:
         ipv4_address: 172.30.0.3
+      ocr-network: {}
+
+  ocr-service:
+    build:
+      context: ./ocr-service
+      dockerfile: Dockerfile
+    image: materialtraceabilitysystem-ocr
+    container_name: mts-ocr-service
+    restart: unless-stopped
+    command:
+      - deno
+      - run
+      - --allow-net
+      - --allow-read
+      - --allow-write
+      - --allow-run
+      - --allow-env
+      - --allow-sys
+      - src/index.ts
+      - --http.listen.port
+      - "8080"
+      - --http.endpoint.webui.enable
+      - "false"
+    expose:
+      - "8080"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8080/.well-known/health/ready || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    networks:
+      - ocr-network
 
   frontend:
     build:
@@ -111,3 +146,6 @@ networks:
       config:
         - subnet: 172.30.0.0/24
           gateway: 172.30.0.1
+  ocr-network:
+    driver: bridge
+    internal: true

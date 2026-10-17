@@ -11,18 +11,24 @@ namespace backend.Services.Implementations;
 public sealed class LabelParserService(MtsDbContext context) : ILabelParserService
 {
     private static readonly Regex LotRegex = new(
-        @"(?:\bLOT\b|\bBATCH\b|\bPART[Iİ](?:\s*NO)?\b|\bP\s*\.\s*NO\b)\s*[:#=\-]?\s*([A-Z0-9][A-Z0-9._/-]{1,63})",
+        // Do not interpret the LOT segment inside a value such as TEST-LOT-41 as
+        // a new marker; otherwise the match starts at LOT and returns only 41.
+        @"(?<![A-Z0-9-])(?:L[O0]T|[O0]7|BATCH|PART[Iİ](?:\s*NO)?|P\s*\.\s*NO)\b\s*[:#=\-]?\s*([A-Z0-9][A-Z0-9._/-]{1,63})(?![A-Z0-9._/-])",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
-    private static readonly Regex ExpirationRegex = new(
-        @"(?:\bEXP(?:IRY|IRATION)?\b|\bSKT\b|\bBBD\b|\bBEST\s+BEFORE\b)\s*[:#=\-]?\s*(\d{1,2}[./-]\d{1,2}[./-]\d{2,4}|\d{4}-\d{1,2}-\d{1,2}|\d{1,2}/\d{2})",
+    private static readonly Regex DateRegex = new(
+        @"(?<!\d)(?<iso>\d{4}[./-]\d{1,2}[./-]\d{1,2})(?!\d)|(?<!\d)(?<dayFirst>\d{1,2}[./-]\d{1,2}[./-]\d{2,4})(?!\d)|(?<!\d)(?<monthYear>\d{1,2}/\d{2})(?!\d)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly Regex ExpirationMarkerRegex = new(
+        @"\b(?:EXP(?:IRY|IRATION)?|SKT|BBD|BEST\s+BEFORE)\b",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public async Task<BatchLabelScanResultDto> ParseAsync(string rawText, CancellationToken ct = default)
     {
         rawText ??= string.Empty;
         var lot = LotRegex.Match(rawText).Groups[1].Value.Trim().TrimEnd('.', ',', ';');
-        var expiration = ParseExpiration(ExpirationRegex.Match(rawText).Groups[1].Value);
+        var expiration = ExtractExpiration(rawText);
         var chemical = await SuggestChemicalAsync(rawText, ct);
 
         return new BatchLabelScanResultDto(
@@ -76,12 +82,32 @@ public sealed class LabelParserService(MtsDbContext context) : ILabelParserServi
         return scored[0].Chemical;
     }
 
-    private static DateTime? ParseExpiration(string value)
+    private static DateTime? ExtractExpiration(string rawText)
     {
+        var candidates = DateRegex.Matches(rawText)
+            .Select(match => new
+            {
+                Value = ParseExpiration(match),
+                match.Index,
+                IsLabeled = ExpirationMarkerRegex.IsMatch(rawText[
+                    Math.Max(0, match.Index - 40)..match.Index])
+            })
+            .Where(candidate => candidate.Value.HasValue)
+            .OrderByDescending(candidate => candidate.Value!.Value.Date >= DateTime.UtcNow.Date)
+            .ThenByDescending(candidate => candidate.IsLabeled)
+            .ThenBy(candidate => candidate.Index)
+            .ToList();
+
+        return candidates.FirstOrDefault()?.Value;
+    }
+
+    private static DateTime? ParseExpiration(Match match)
+    {
+        var value = match.Value;
         if (string.IsNullOrWhiteSpace(value))
             return null;
 
-        if (Regex.IsMatch(value, @"^\d{1,2}/\d{2}$", RegexOptions.CultureInvariant))
+        if (match.Groups["monthYear"].Success)
         {
             var parts = value.Split('/');
             if (!int.TryParse(parts[0], NumberStyles.None, CultureInfo.InvariantCulture, out var month) ||
@@ -93,10 +119,12 @@ public sealed class LabelParserService(MtsDbContext context) : ILabelParserServi
             return new DateTime(year, month, DateTime.DaysInMonth(year, month), 0, 0, 0, DateTimeKind.Utc);
         }
 
-        var formats = new[]
+        var formats = match.Groups["iso"].Success
+            ? new[] { "yyyy.M.d", "yyyy.MM.dd", "yyyy/M/d", "yyyy/MM/dd", "yyyy-M-d", "yyyy-MM-dd" }
+            : new[]
         {
             "d.M.yyyy", "dd.MM.yyyy", "d/M/yyyy", "dd/MM/yyyy", "d-M-yyyy", "dd-MM-yyyy",
-            "yyyy-M-d", "yyyy-MM-dd"
+            "d.M.yy", "dd.MM.yy", "d/M/yy", "dd/MM/yy", "d-M-yy", "dd-MM-yy"
         };
         if (!DateTime.TryParseExact(value, formats, CultureInfo.InvariantCulture,
                 DateTimeStyles.None, out var parsed))
@@ -127,7 +155,28 @@ public sealed class LabelParserService(MtsDbContext context) : ILabelParserServi
                 best = Math.Max(best, 1d - (double)distance / Math.Max(candidate.Length, phrase.Length));
             }
         }
-        return best;
+        var expectedWordTokens = expectedTokens.Where(token => token.Length >= 3).ToArray();
+        if (expectedWordTokens.Length == 0)
+            return best;
+
+        var tokenScores = expectedWordTokens.Select(expected => textTokens
+            .Where(token => token.Length >= 3)
+            .Select(token =>
+            {
+                if (expected == token)
+                    return 1d;
+                if ((expected.Contains(token, StringComparison.Ordinal) || token.Contains(expected, StringComparison.Ordinal)) &&
+                    Math.Min(expected.Length, token.Length) >= 4)
+                    return 0.9d;
+
+                var distance = Levenshtein(expected, token);
+                return 1d - (double)distance / Math.Max(expected.Length, token.Length);
+            })
+            .DefaultIfEmpty(0d)
+            .Max()).ToArray();
+        var coverage = (double)tokenScores.Count(score => score >= 0.65) / tokenScores.Length;
+        var tokenScore = tokenScores.Average() * 0.6 + coverage * 0.4;
+        return Math.Max(best, tokenScore);
     }
 
     private static int Levenshtein(string left, string right)

@@ -13,6 +13,9 @@ export const getStoredUser = () => {
 export const isAdmin = (user = getStoredUser()) => Boolean(
   user?.roles?.some((role) => role === 'Admin' || role === 'ROLE_ADMIN'));
 
+export const isOperator = (user = getStoredUser()) => Boolean(
+  user?.roles?.some((role) => role === 'Operator' || role === 'ROLE_OPERATOR'));
+
 export const hasAnyPermission = (required = [], user = getStoredUser()) => {
   if (!user) return false;
   if (isAdmin(user) || required.length === 0) return true;

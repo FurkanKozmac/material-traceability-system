@@ -129,7 +129,7 @@ public class BatchesController(
     }
 
     [HttpPost]
-    [Authorize(Roles = "Admin")]
+    [Authorize(Roles = "Admin,Operator")]
     public async Task<ActionResult<BatchResponse>> Create(CreateBatchRequest request, CancellationToken ct)
     {
         try

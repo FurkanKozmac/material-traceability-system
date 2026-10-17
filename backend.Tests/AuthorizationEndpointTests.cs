@@ -32,9 +32,7 @@ public sealed class AuthorizationEndpointTests
     [InlineData("DELETE", "/api/units/UNIT-42")]
     [InlineData("POST", "/api/chemicals")]
     [InlineData("POST", "/api/addresses")]
-    [InlineData("POST", "/api/batches")]
     [InlineData("POST", "/api/units")]
-    [InlineData("POST", "/api/relocation-tasks")]
     [InlineData("PUT", "/api/settings/barcode-format")]
     [InlineData("PUT", "/api/settings/notifications")]
     [InlineData("POST", "/api/settings/test-alert-email")]
@@ -114,6 +112,40 @@ public sealed class AuthorizationEndpointTests
     }
 
     [Fact]
+    public async Task Operator_CanCreateBatch()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/batches")
+        {
+            Content = JsonContent.Create(new CreateBatchRequest(
+                "LOT-RECEIVED-42", "Fictional Supplier", 4,
+                new DateTime(2027, 11, 15, 0, 0, 0, DateTimeKind.Utc), 1))
+        };
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Created, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Operator_CanCreateRelocationTask()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/relocation-tasks")
+        {
+            Content = JsonContent.Create(new CreateRelocationTaskRequest(7, 12))
+        };
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task ProtectedEndpoint_WithoutIdentity_ReturnsUnauthorized()
     {
         using var host = CreateHost();
@@ -184,6 +216,11 @@ public sealed class AuthorizationEndpointTests
         var settings = new Mock<ISettingsService>();
         var email = new Mock<IEmailService>();
         var relocationTasks = new Mock<IRelocationTaskService>();
+        relocationTasks.Setup(service => service.CreateTaskAsync(
+                It.IsAny<CreateRelocationTaskRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new RelocationTaskResponse(7, "Pending", DateTime.UtcNow, null,
+                1, "BAR-DEMO-UNIT-001", 3, "ADR-DEMO-RACK-01", 12,
+                "ADR-DEMO-RACK-SOL-02", null, null));
         relocationTasks.Setup(service => service.CompleteTaskAsync(
                 It.IsAny<long>(), It.IsAny<CompleteRelocationTaskRequest>(), It.IsAny<long?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
@@ -195,6 +232,10 @@ public sealed class AuthorizationEndpointTests
             .ReturnsAsync(new BatchLabelScanResultDto(1, "Sodium Hydroxide", "OCR-LOT-42",
                 new DateTime(2027, 11, 15, 0, 0, 0, DateTimeKind.Utc),
                 "SODIUM HYDROXIDE LOT: OCR-LOT-42 EXP: 2027-11-15", "BAT-OCR-LOT-42"));
+        var batches = new Mock<IBatchService>();
+        batches.Setup(service => service.CreateAsync(It.IsAny<CreateBatchRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BatchResponse(42, "LOT-RECEIVED-42", "Fictional Supplier", 4,
+                new DateTime(2027, 11, 15, 0, 0, 0, DateTimeKind.Utc), 1, "Sodium Hydroxide", 4));
 
         return new HostBuilder()
             .ConfigureWebHost(webHost => webHost
@@ -218,7 +259,7 @@ public sealed class AuthorizationEndpointTests
                 services.AddSingleton(settings.Object);
                 services.AddSingleton(email.Object);
                 services.AddSingleton(relocationTasks.Object);
-                services.AddSingleton(Mock.Of<IBatchService>());
+                services.AddSingleton(batches.Object);
                 services.AddSingleton(ocr.Object);
                 services.AddSingleton(labelParser.Object);
             })

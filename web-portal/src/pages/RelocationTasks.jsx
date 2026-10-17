@@ -2,13 +2,14 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Alert, Box, Button, Card, CardActions, CardContent, Chip, Grid, MenuItem, Paper, Stack, Tab, Tabs, TextField, Typography } from '@mui/material';
 import { AddRoad, CancelOutlined, SwapHoriz } from '@mui/icons-material';
 import api from '../api';
-import { isAdmin } from '../auth';
+import { isAdmin, isOperator } from '../auth';
 import { useLanguage } from '../useLanguage';
 import { getLocalizedApiError } from '../apiError';
 
 export default function RelocationTasks() {
   const { t } = useLanguage();
-  const canManage = isAdmin();
+  const canPlan = isAdmin() || isOperator();
+  const canCancel = isAdmin();
   const [tasks, setTasks] = useState([]);
   const [status, setStatus] = useState('Pending');
   const [loading, setLoading] = useState(true);
@@ -54,7 +55,7 @@ export default function RelocationTasks() {
     <Typography variant="h4" sx={{ fontWeight: 700 }}>{t('relocationPageTitle')}</Typography>
     <Typography color="text.secondary" sx={{ mt: .5, mb: 3 }}>{t('relocationPageDescription')}</Typography>
     {message && <Alert severity={message.type} sx={{ mb: 2 }}>{String(message.text)}</Alert>}
-    {canManage && <Paper variant="outlined" sx={{ p: 2.5, mb: 3, borderRadius: 3 }}>
+    {canPlan && <Paper variant="outlined" sx={{ p: 2.5, mb: 3, borderRadius: 3 }}>
       <Stack direction="row" spacing={1} alignItems="center" sx={{ mb: 2 }}><AddRoad color="primary" /><Typography variant="h6" fontWeight={700}>{t('newTask')}</Typography></Stack>
       <Box component="form" onSubmit={findUnit} sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
         <TextField required label={t('stockUnitBarcode')} value={barcode} onChange={(e) => setBarcode(e.target.value)} sx={{ flex: '1 1 300px' }} />
@@ -79,7 +80,7 @@ export default function RelocationTasks() {
             <Typography sx={{ mt: 2, fontFamily: 'monospace', fontWeight: 800 }}>{task.unitBarcode}</Typography>
             <Box sx={{ mt: 2, p: 1.5, bgcolor: '#f8fafc', display: 'flex', justifyContent: 'space-around', alignItems: 'center' }}><Box textAlign="center"><small>{t('source')}</small><Typography fontWeight={800}>{task.fromAddressCode}</Typography></Box><SwapHoriz /><Box textAlign="center"><small>{t('target')}</small><Typography fontWeight={800}>{task.toAddressCode}</Typography></Box></Box>
             <Typography variant="caption" color="text.secondary">{new Date(task.createdAt).toLocaleString('tr-TR')}</Typography>
-          </CardContent>{task.status === 'Pending' && <CardActions>{canManage && <Button color="error" startIcon={<CancelOutlined />} onClick={() => cancel(task.id)}>{t('cancel')}</Button>}<Typography variant="caption" sx={{ ml: 'auto' }}>{t('completedOnMobile')}</Typography></CardActions>}</Card></Grid>)}
+          </CardContent>{task.status === 'Pending' && <CardActions>{canCancel && <Button color="error" startIcon={<CancelOutlined />} onClick={() => cancel(task.id)}>{t('cancel')}</Button>}<Typography variant="caption" sx={{ ml: 'auto' }}>{t('completedOnMobile')}</Typography></CardActions>}</Card></Grid>)}
         </Grid>}
       </Box>
     </Paper>

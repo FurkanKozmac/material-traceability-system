@@ -54,4 +54,54 @@ public sealed class LabelParserServiceTests
         Assert.Null(result.ExtractedExpirationDate);
         Assert.Equal("X-1", result.ExtractedLotNumber);
     }
+
+    [Fact]
+    public async Task ParseAsync_ExtractsLotAndDateFromNoisyUnlabeledOcr()
+    {
+        const string rawText = """
+            Clr. L2
+            IDO'M:('“&/ 3 g’w*aﬂ‘*r e/
+            — s
+            W /(o7:TEST-LOT-41
+            N
+            P :15.11.2013
+            )
+            ç 'l'—*ı.
+            URDERR O DL, e SA A 170 NĞ T W o
+            """;
+
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var result = await new LabelParserService(database.Context).ParseAsync(rawText);
+
+        Assert.Equal("TEST-LOT-41", result.ExtractedLotNumber);
+        Assert.Equal(new DateTime(2013, 11, 15, 0, 0, 0, DateTimeKind.Utc), result.ExtractedExpirationDate);
+    }
+
+    [Fact]
+    public async Task ParseAsync_PrefersFutureDateWhenOcrContainsMultipleDates()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+
+        var result = await new LabelParserService(database.Context)
+            .ParseAsync("Manufactured 01.02.2013; P : 15.11.2027");
+
+        Assert.Equal(new DateTime(2027, 11, 15, 0, 0, 0, DateTimeKind.Utc), result.ExtractedExpirationDate);
+    }
+
+    [Fact]
+    public async Task ParseAsync_UsesTokenContainmentForNoisyChemicalText()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        database.Context.Chemicals.Add(new Chemical
+        {
+            Name = "Polymer Stabilizer",
+            ChemicalCode = "POLY-STAB",
+            Stopped = false
+        });
+        await database.Context.SaveChangesAsync();
+
+        var result = await new LabelParserService(database.Context).ParseAsync("POLYMER / STABIL");
+
+        Assert.Equal("Polymer Stabilizer", result.SuggestedChemicalName);
+    }
 }

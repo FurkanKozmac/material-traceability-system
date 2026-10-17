@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
 using backend.Common.Exceptions;
 using backend.Services.Interfaces;
@@ -33,20 +34,23 @@ public sealed class OcrService(HttpClient httpClient, IConfiguration configurati
         if (!Uri.TryCreate(endpoint, UriKind.Absolute, out var endpointUri) ||
             endpointUri.Scheme is not ("http" or "https"))
             throw new OcrServiceUnavailableException("OCR sağlayıcısı yapılandırılmamış. Ocr:Endpoint ayarlanmalıdır.");
-        if (environment.IsProduction() && endpointUri.Scheme != Uri.UriSchemeHttps)
-            throw new OcrServiceUnavailableException("Production OCR sağlayıcısı HTTPS kullanmalıdır.");
+        if (environment.IsProduction() &&
+            !endpointUri.Host.Equals("ocr-service", StringComparison.OrdinalIgnoreCase))
+            throw new OcrServiceUnavailableException("Production OCR yalnızca iç ağdaki ocr-service üzerinden kullanılabilir.");
+        if (environment.IsProduction() && endpointUri.Scheme != Uri.UriSchemeHttp)
+            throw new OcrServiceUnavailableException("İç ağdaki ocr-service HTTP kullanmalıdır.");
 
         using var request = new HttpRequestMessage(HttpMethod.Post, endpointUri);
         using var multipart = new MultipartFormDataContent();
         var imageContent = new StreamContent(image);
         imageContent.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
-        multipart.Add(imageContent, "image", "label-image");
+        multipart.Add(imageContent, "file", "label-image");
+        var languages = (configuration["Ocr:Languages"] ?? "eng+tur")
+            .Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var options = JsonSerializer.Serialize(new { languages, pageSegmentationMethod = 6 }, JsonOptions);
+        multipart.Add(new StringContent(options, Encoding.UTF8, "application/json"), "options");
         request.Content = multipart;
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
-
-        var apiKey = configuration["Ocr:ApiKey"];
-        if (!string.IsNullOrWhiteSpace(apiKey))
-            request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", apiKey);
 
         try
         {
@@ -54,11 +58,13 @@ public sealed class OcrService(HttpClient httpClient, IConfiguration configurati
             if (!response.IsSuccessStatusCode)
                 throw new OcrServiceUnavailableException($"OCR sağlayıcısı HTTP {(int)response.StatusCode} yanıtı verdi.");
 
-            var result = await response.Content.ReadFromJsonAsync<OcrProviderResponse>(JsonOptions, ct);
-            if (string.IsNullOrWhiteSpace(result?.RawText))
+            var result = await response.Content.ReadFromJsonAsync<TesseractServerResponse>(JsonOptions, ct);
+            var rawText = result?.Data?.Stdout ?? result?.Stdout;
+            if (result?.Data?.Exit?.Code is int exitCode && exitCode != 0 ||
+                string.IsNullOrWhiteSpace(rawText))
                 throw new OcrServiceUnavailableException("OCR sağlayıcısı okunabilir metin döndürmedi.");
 
-            return ValidateText(result.RawText);
+            return ValidateText(rawText);
         }
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
@@ -81,5 +87,7 @@ public sealed class OcrService(HttpClient httpClient, IConfiguration configurati
         return rawText;
     }
 
-    private sealed record OcrProviderResponse(string? RawText);
+    private sealed record TesseractServerResponse(TesseractServerResult? Data, string? Stdout);
+    private sealed record TesseractServerResult(TesseractProcessExit? Exit, string? Stdout);
+    private sealed record TesseractProcessExit(int? Code);
 }

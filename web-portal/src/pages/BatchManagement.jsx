@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Alert, Box, Button, CircularProgress, Dialog, DialogActions, DialogContent, DialogTitle, IconButton, MenuItem, Paper, Table, TableBody, TableCell, TableHead, TableRow, TextField, Typography } from '@mui/material';
 import { Close, PhotoCamera } from '@mui/icons-material';
 import api from '../api';
-import { isAdmin } from '../auth';
+import { isAdmin, isOperator } from '../auth';
 import { useLanguage } from '../useLanguage';
 import { getLocalizedApiError } from '../apiError';
 
@@ -10,7 +10,7 @@ const emptyForm = { batchNo: '', supplier: '', initialQuantity: 1, expirationDat
 
 export default function BatchManagement() {
   const { t } = useLanguage();
-  const canManage = isAdmin();
+  const canCreateBatch = isAdmin() || isOperator();
   const [batches, setBatches] = useState([]);
   const [chemicals, setChemicals] = useState([]);
   const [form, setForm] = useState(emptyForm);
@@ -100,7 +100,7 @@ export default function BatchManagement() {
       <Button type="submit" variant="outlined">{t('search')}</Button>
       <Button onClick={() => { setSearch(''); load(''); }}>{t('clear')}</Button>
     </Paper>
-    {canManage && <Paper component="form" onSubmit={create} sx={{ p: 3, mb: 3, display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr) auto' }, gap: 2 }}>
+    {canCreateBatch && <Paper component="form" onSubmit={create} sx={{ p: 3, mb: 3, display: 'grid', gridTemplateColumns: { xs: '1fr', md: 'repeat(5, 1fr) auto' }, gap: 2 }}>
       <Box sx={{ gridColumn: '1 / -1', display: 'flex', alignItems: 'center', gap: 1.5, flexWrap: 'wrap' }}>
         <input ref={imageInput} hidden type="file" accept="image/jpeg,image/png,image/webp" onChange={scanLabel} />
         <Button type="button" variant="outlined" startIcon={scanning ? <CircularProgress size={18} /> : <PhotoCamera />} disabled={scanning} onClick={() => imageInput.current?.click()}>

@@ -42,7 +42,7 @@ public sealed class OcrServiceTests
     }
 
     [Fact]
-    public async Task ProductionRemoteMode_RejectsHttpProviderEndpoint()
+    public async Task ProductionRemoteMode_RejectsExternalOcrEndpoint()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -54,7 +54,26 @@ public sealed class OcrServiceTests
         var error = await Assert.ThrowsAsync<OcrServiceUnavailableException>(() =>
             service.ExtractTextAsync(new MemoryStream([1]), "image/jpeg"));
 
-        Assert.Contains("HTTPS", error.Message);
+        Assert.Contains("ocr-service", error.Message);
+    }
+
+    [Fact]
+    public async Task ProductionRemoteMode_AllowsInternalTesseractEndpoint()
+    {
+        using var client = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = new StringContent("{\"data\":{\"exit\":{\"code\":0},\"stdout\":\"LOT: LOCAL-42\"}}", Encoding.UTF8, "application/json")
+        }));
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Ocr:Mode"] = "Remote",
+            ["Ocr:Endpoint"] = "http://ocr-service:8080/tesseract"
+        }).Build();
+        var service = new OcrService(client, configuration, CreateEnvironment("Production"));
+
+        var text = await service.ExtractTextAsync(new MemoryStream([1, 2, 3]), "image/png");
+
+        Assert.Equal("LOT: LOCAL-42", text);
     }
 
     [Fact]
@@ -73,32 +92,31 @@ public sealed class OcrServiceTests
     [Fact]
     public async Task RemoteModePostsImageAndParsesProviderContract()
     {
-        string? authorizationScheme = null;
-        string? authorizationParameter = null;
         string? requestMediaType = null;
         using var client = new HttpClient(new StubHttpMessageHandler(request =>
         {
-            authorizationScheme = request.Headers.Authorization?.Scheme;
-            authorizationParameter = request.Headers.Authorization?.Parameter;
             requestMediaType = request.Content?.Headers.ContentType?.MediaType;
+            var multipartBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
+            Assert.Contains("name=file", multipartBody);
+            Assert.Contains("name=options", multipartBody);
+            Assert.Contains("\"languages\":[\"eng\",\"tur\"]", multipartBody);
+            Assert.EndsWith("/tesseract", request.RequestUri!.AbsolutePath);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("{\"rawText\":\"LOT: REMOTE-42\"}", Encoding.UTF8, "application/json")
+                Content = new StringContent("{\"data\":{\"exit\":{\"code\":0},\"stdout\":\"LOT: REMOTE-42\"}}", Encoding.UTF8, "application/json")
             };
         }));
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Ocr:Mode"] = "Remote",
-            ["Ocr:Endpoint"] = "https://ocr.example.test/parse",
-            ["Ocr:ApiKey"] = "test-token"
+            ["Ocr:Endpoint"] = "https://ocr.example.test/tesseract",
+            ["Ocr:Languages"] = "eng+tur"
         }).Build();
         var service = new OcrService(client, configuration, CreateEnvironment("Testing"));
 
         var text = await service.ExtractTextAsync(new MemoryStream([1, 2, 3]), "image/png");
 
         Assert.Equal("LOT: REMOTE-42", text);
-        Assert.Equal("Bearer", authorizationScheme);
-        Assert.Equal("test-token", authorizationParameter);
         Assert.Equal("multipart/form-data", requestMediaType);
     }
 
