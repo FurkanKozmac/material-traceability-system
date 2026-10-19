@@ -251,6 +251,10 @@ public sealed class AuthorizationEndpointTests
                         .RequireAuthenticatedUser()
                         .Build();
                 });
+                // BatchesController broadcasts inventory changes after creation.
+                // The production host registers SignalR in Program.cs; this isolated
+                // test host must register it as well so controller activation matches.
+                services.AddSignalR();
                 services.AddControllers().AddApplicationPart(typeof(backend.Controllers.ChemicalController).Assembly);
                 services.AddDbContext<MtsDbContext>(options => options.UseSqlite("Data Source=:memory:"));
                 services.AddSingleton(chemical.Object);
