@@ -1,6 +1,7 @@
 import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import Constants from 'expo-constants';
+import { File } from 'expo-file-system';
 
 const expoHost = Constants.expoConfig?.hostUri?.split(':')[0]
   || Constants.manifest2?.extra?.expoClient?.hostUri?.split(':')[0];
@@ -48,10 +49,10 @@ const extractErrorMessage = async (response, defaultMsg) => {
   try {
     const errText = await response.text();
     try {
-      const errObj = JSON.parse(errText);
-      return errObj.message || errObj.error || errText || defaultMsg;
-    } catch (parseErr) {
-      return errText || defaultMsg;
+      JSON.parse(errText);
+      return defaultMsg;
+    } catch {
+      return defaultMsg;
     }
   } catch (e) {
     return defaultMsg;
@@ -63,16 +64,13 @@ const readJsonResponse = async (response, context) => {
   const text = await response.text();
 
   if (!contentType.toLowerCase().includes('application/json')) {
-    const htmlReceived = text.trimStart().startsWith('<');
-    throw new Error(htmlReceived
-      ? `${context}: Sunucu JSON yerine HTML döndürdü. Server Connection Setup ekranında bilgisayarın yerel ağ IP adresini ve 5059 portunu kullanın.`
-      : `${context}: Geçersiz sunucu yanıtı.`);
+    throw new Error(context);
   }
 
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error(`${context}: Sunucudan geçersiz JSON yanıtı alındı.`);
+    throw new Error(context);
   }
 };
 
@@ -138,9 +136,47 @@ export const scanBatch = async (barcode) => {
     { headers }
   );
   if (!response.ok) {
-    throw new Error(await extractErrorMessage(response, 'Hammadde partisi sorgulanamadı'));
+    throw new Error(await extractErrorMessage(response, 'Malzeme partisi sorgulanamadı'));
   }
-  return readJsonResponse(response, 'Hammadde partisi sorgusu başarısız');
+  return readJsonResponse(response, 'Malzeme partisi sorgusu başarısız');
+};
+
+export const listChemicals = async () => {
+  const baseUrl = await getBackendUrl();
+  const response = await fetchWithAuth(`${baseUrl}/api/chemicals`, { headers: await getHeaders(false) });
+  if (!response.ok) throw new Error(await extractErrorMessage(response, 'Kimyasallar yüklenemedi'));
+  return readJsonResponse(response, 'Kimyasallar yüklenemedi');
+};
+
+export const scanBatchLabel = async (image) => {
+  const baseUrl = await getBackendUrl();
+  const form = new FormData();
+  // React Native's legacy { uri, name, type } FormData part is rejected by
+  // newer iOS networking implementations. Expo File implements Blob and is
+  // supported by native FormData on iOS and Android.
+  const imagePart = image.uri.startsWith('data:') || image.uri.startsWith('blob:')
+    ? await (await fetch(image.uri)).blob()
+    : new File(image.uri);
+  form.append('image', imagePart, image.name || 'label.jpg');
+  const response = await fetchWithAuth(`${baseUrl}/api/batches/scan-label`, {
+    method: 'POST', headers: await getHeaders(false), body: form,
+  });
+  if (!response.ok) throw new Error(await extractErrorMessage(response, 'Etiket OCR ile okunamadı'));
+  return readJsonResponse(response, 'Etiket OCR ile okunamadı');
+};
+
+export const createBatch = async (batch) => {
+  const baseUrl = await getBackendUrl();
+  const response = await fetchWithAuth(`${baseUrl}/api/batches`, {
+    method: 'POST', headers: await getHeaders(), body: JSON.stringify(batch),
+  });
+  if (!response.ok) throw new Error(await extractErrorMessage(response, 'Parti oluşturulamadı'));
+  return readJsonResponse(response, 'Parti oluşturulamadı');
+};
+
+export const getLabelPreviewUrl = async (payload) => {
+  const baseUrl = await getBackendUrl();
+  return `${baseUrl}/api/labels/preview?payload=${encodeURIComponent(payload)}`;
 };
 
 export const consumeUnit = async (barcode) => {

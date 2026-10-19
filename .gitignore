@@ -37,12 +37,28 @@ ehthumbs.db
 *.key
 *.p12
 *.pfx
+*.p8
+*.p7b
+*.p7c
+*.crt
+*.cer
+*.jks
+*.keystore
+*.mobileprovision
+**/.ssh/
+**/.aws/
+**/secrets/
+**/credentials/
+**/service-account*.json
+**/firebase-adminsdk*.json
 
 # Node, Vite and Expo dependencies/cache/output
 **/node_modules/
 **/.npm/
 **/.yarn/
 **/.pnpm-store/
+**/.cache/
+**/.paddleocr/
 **/.parcel-cache/
 **/.vite/
 **/.expo/
@@ -75,7 +91,14 @@ ehthumbs.db
 # Logs and local runtime artifacts
 *.log
 logs/
-backups/demo-reset/
+backups/
+**/backups/
+*.dump
+*.sql.gz
+*.bak
+*.sqlite
+*.sqlite3
+*.db
 
 # Docker local data and overrides
 mts_postgres_data/

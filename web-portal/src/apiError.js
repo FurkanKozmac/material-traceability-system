@@ -9,5 +9,7 @@ export function getLocalizedApiError(error, t, fallback) {
     return translated.replace('{storageType}', localizedStorageType || storageType || '');
   }
 
-  return payload?.message || (typeof payload === 'string' ? payload : fallback);
+  // API validation text is not localized yet. Keep the selected interface language
+  // consistent until the backend returns culture-aware error resources.
+  return fallback;
 }

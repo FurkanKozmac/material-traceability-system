@@ -4,7 +4,7 @@ import api from '../api';
 import { useLanguage } from '../useLanguage';
 
 export default function InventoryMaster() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [barcode, setBarcode] = useState('');
   const [addressId, setAddressId] = useState('');
   const [addresses, setAddresses] = useState([]);
@@ -24,7 +24,7 @@ export default function InventoryMaster() {
       if (!response.data.length) setMessage({ type: 'info', text: t('unitNotFound') });
     } catch (error) {
       setUnits([]);
-      setMessage({ type: 'error', text: error.response?.data || t('unitSearchFailed') });
+      setMessage({ type: 'error', text: t('unitSearchFailed') });
     }
   };
 
@@ -35,7 +35,7 @@ export default function InventoryMaster() {
       setUnits((await api.get('/units', { params: { addressId, size: 500 } })).data);
     } catch (error) {
       setUnits([]);
-      setMessage({ type: 'error', text: error.response?.data || t('rackUnitsLoadFailed') });
+      setMessage({ type: 'error', text: t('rackUnitsLoadFailed') });
     }
   };
 
@@ -54,7 +54,7 @@ export default function InventoryMaster() {
       <Button variant="outlined" onClick={listByAddress} disabled={!addressId}>{t('listRackUnits')}</Button>
     </Paper>
     <Paper><Table><TableHead><TableRow><TableCell>{t('barcode')}</TableCell><TableCell>{t('batch')}</TableCell><TableCell>{t('chemical')}</TableCell><TableCell>{t('status')}</TableCell><TableCell>{t('rack')}</TableCell><TableCell>{t('expirationDate')}</TableCell></TableRow></TableHead>
-      <TableBody>{units.map((unit) => <TableRow key={unit.id}><TableCell>{unit.barcode}</TableCell><TableCell>{unit.batchNo}</TableCell><TableCell>{unit.chemicalCode} · {unit.chemicalName}</TableCell><TableCell>{['InStock', 'AVAILABLE'].includes(unit.status) ? t('available') : unit.status === 'Depleted' ? t('consumedStatus') : unit.status}</TableCell><TableCell>{unit.addressCode || t('notAssigned')}</TableCell><TableCell>{unit.expirationDate ? new Date(unit.expirationDate).toLocaleDateString() : '-'}</TableCell></TableRow>)}</TableBody>
+      <TableBody>{units.map((unit) => <TableRow key={unit.id}><TableCell>{unit.barcode}</TableCell><TableCell>{unit.batchNo}</TableCell><TableCell>{unit.chemicalCode} · {unit.chemicalName}</TableCell><TableCell>{['InStock', 'AVAILABLE'].includes(unit.status) ? t('available') : unit.status === 'Depleted' ? t('consumedStatus') : unit.status}</TableCell><TableCell>{unit.addressCode || t('notAssigned')}</TableCell><TableCell>{unit.expirationDate ? new Date(unit.expirationDate).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US') : '-'}</TableCell></TableRow>)}</TableBody>
     </Table></Paper>
   </Box>;
 }

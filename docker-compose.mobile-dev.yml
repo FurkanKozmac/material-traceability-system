@@ -1,0 +1,6 @@
+# Opt-in LAN access for a physical development terminal. Bind to the Mac's
+# current LAN IP instead of publishing the API on every host interface.
+services:
+  backend:
+    ports:
+      - "${MOBILE_API_BIND_ADDRESS:?Set MOBILE_API_BIND_ADDRESS to this computer's LAN IP}:5059:5059"

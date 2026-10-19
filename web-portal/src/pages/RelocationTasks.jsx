@@ -7,7 +7,7 @@ import { useLanguage } from '../useLanguage';
 import { getLocalizedApiError } from '../apiError';
 
 export default function RelocationTasks() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const canPlan = isAdmin() || isOperator();
   const canCancel = isAdmin();
   const [tasks, setTasks] = useState([]);
@@ -64,7 +64,7 @@ export default function RelocationTasks() {
       {unit && <Box sx={{ mt: 2, p: 2, bgcolor: '#f8fafc', borderRadius: 2, display: 'grid', gridTemplateColumns: { xs: '1fr', md: '1fr 1.5fr auto' }, gap: 2, alignItems: 'center' }}>
         <Box><Typography fontWeight={750}>{unit.barcode}</Typography><Typography variant="body2">{unit.chemicalName} · {t('currentRack')}: {unit.addressCode || '-'}</Typography></Box>
         <TextField select label={t('compatibleTargetRack')} value={targetId} onChange={(e) => setTargetId(e.target.value)} disabled={!targets.length}>
-          {targets.map((target) => <MenuItem key={target.id} value={target.id}>{target.code} · {target.storageType} · {target.availableCapacity == null ? t('unlimitedCapacity') : `${target.availableCapacity} ${t('emptyCapacity')}`}</MenuItem>)}
+          {targets.map((target) => <MenuItem key={target.id} value={target.id}>{target.code} · {t(String(target.storageType).toLowerCase())} · {target.availableCapacity == null ? t('unlimitedCapacity') : `${target.availableCapacity} ${t('emptyCapacity')}`}</MenuItem>)}
         </TextField>
         <Button variant="contained" disabled={!targetId} onClick={create}>{t('createTask')}</Button>
       </Box>}
@@ -79,7 +79,7 @@ export default function RelocationTasks() {
             <Stack direction="row" justifyContent="space-between"><Typography fontWeight={700}>{t('task')} #{task.id}</Typography><Chip size="small" label={task.status === 'Pending' ? t('taskPendingLabel') : task.status === 'Completed' ? t('taskCompletedLabel') : t('taskCancelledLabel')} /></Stack>
             <Typography sx={{ mt: 2, fontFamily: 'monospace', fontWeight: 800 }}>{task.unitBarcode}</Typography>
             <Box sx={{ mt: 2, p: 1.5, bgcolor: '#f8fafc', display: 'flex', justifyContent: 'space-around', alignItems: 'center' }}><Box textAlign="center"><small>{t('source')}</small><Typography fontWeight={800}>{task.fromAddressCode}</Typography></Box><SwapHoriz /><Box textAlign="center"><small>{t('target')}</small><Typography fontWeight={800}>{task.toAddressCode}</Typography></Box></Box>
-            <Typography variant="caption" color="text.secondary">{new Date(task.createdAt).toLocaleString('tr-TR')}</Typography>
+            <Typography variant="caption" color="text.secondary">{new Date(task.createdAt).toLocaleString(language === 'tr' ? 'tr-TR' : 'en-US')}</Typography>
           </CardContent>{task.status === 'Pending' && <CardActions>{canCancel && <Button color="error" startIcon={<CancelOutlined />} onClick={() => cancel(task.id)}>{t('cancel')}</Button>}<Typography variant="caption" sx={{ ml: 'auto' }}>{t('completedOnMobile')}</Typography></CardActions>}</Card></Grid>)}
         </Grid>}
       </Box>

@@ -1,21 +1,29 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Alert, SafeAreaView, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Vibration } from 'react-native';
 import { CameraView, useCameraPermissions } from 'expo-camera';
-import { useRouter } from 'expo-router';
+import { useFocusEffect, useRouter } from 'expo-router';
 import { consumeUnit, scanBatch, scanUnit } from '../src/services/api';
 import { useLanguage } from '../src/context/LanguageContext';
 
 export default function ScannerScreen() {
   const router = useRouter();
-  const { t } = useLanguage();
+  const [isFocused, setIsFocused] = useState(false);
+  const { t, language } = useLanguage();
   const [permission, requestPermission] = useCameraPermissions();
   const [barcode, setBarcode] = useState('');
   const [unit, setUnit] = useState(null);
   const [activeBatch, setActiveBatch] = useState(null);
   const [scanned, setScanned] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [cameraReady, setCameraReady] = useState(false);
+  const [cameraError, setCameraError] = useState('');
   const scanLockRef = useRef(false);
   const cooldownRef = useRef(null);
+
+  useFocusEffect(useCallback(() => {
+    setIsFocused(true);
+    return () => setIsFocused(false);
+  }, []));
 
   const releaseScanLock = () => {
     if (cooldownRef.current) clearTimeout(cooldownRef.current);
@@ -74,7 +82,7 @@ export default function ScannerScreen() {
       setUnit(null);
       setScanned(false);
       if (fromCamera) releaseScanLock();
-      Alert.alert(t('barcodeNotFound'), error.message || t('barrelLookupFailed'));
+      Alert.alert(t('barcodeNotFound'), t('stockUnitLookupFailed'));
     } finally {
       setLoading(false);
     }
@@ -97,7 +105,7 @@ export default function ScannerScreen() {
       Vibration.vibrate([0, 100, 50, 100]);
       Alert.alert(t('success'), t('consumeSuccess'));
     } catch (error) {
-      Alert.alert(t('consumeFailed'), error.message || t('consumeFailed'));
+      Alert.alert(t('consumeFailed'), t('consumeFailed'));
     } finally {
       setLoading(false);
     }
@@ -106,12 +114,12 @@ export default function ScannerScreen() {
   return <SafeAreaView style={styles.container}>
     <ScrollView contentContainerStyle={styles.content}>
       <View style={styles.header}>
-        <Text style={styles.title}>{t('barrelScan')}</Text>
+        <Text style={styles.title}>{t('stockUnitScan')}</Text>
         <TouchableOpacity onPress={() => router.back()}><Text style={styles.back}>{t('back')}</Text></TouchableOpacity>
       </View>
 
       <View style={styles.searchRow}>
-        <TextInput style={styles.input} placeholder={activeBatch ? 'BAR-LOT2026-001' : 'BAT-LOT2026'} autoCapitalize="characters" value={barcode} onChangeText={setBarcode} onSubmitEditing={() => lookup(barcode)} />
+        <TextInput style={styles.input} placeholder={activeBatch ? 'UNIT-LOT2026-001' : 'BAT-LOT2026'} autoCapitalize="characters" value={barcode} onChangeText={setBarcode} onSubmitEditing={() => lookup(barcode)} />
         <TouchableOpacity style={styles.searchButton} onPress={() => lookup(barcode)} disabled={loading}>
           <Text style={styles.buttonText}>{t('query')}</Text>
         </TouchableOpacity>
@@ -135,12 +143,21 @@ export default function ScannerScreen() {
         {scanned && !unit && <TouchableOpacity style={styles.continueButton} onPress={() => { setScanned(false); scanLockRef.current = false; }}><Text style={styles.buttonText}>{t('continueUnitScan')}</Text></TouchableOpacity>}
       </View>}
 
-      {permission?.granted ? <View style={styles.cameraBox}>
-        <CameraView style={StyleSheet.absoluteFillObject} barcodeScannerSettings={{ barcodeTypes: ['qr', 'code128'] }} onBarcodeScanned={scanned ? undefined : handleCameraScan} />
+      {!scanned && permission?.granted ? <View style={styles.cameraBox}>
+        <CameraView
+          style={styles.cameraPreview}
+          facing="back"
+          active={isFocused}
+          barcodeScannerSettings={{ barcodeTypes: ['qr', 'code128'] }}
+          onCameraReady={() => { setCameraReady(true); setCameraError(''); }}
+          onMountError={(event) => { setCameraError(event.message || t('cameraUnavailable')); setCameraReady(false); }}
+          onBarcodeScanned={scanned ? undefined : handleCameraScan}
+        />
         <View style={styles.reticle} />
-      </View> : <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
+        {!cameraReady && <View style={styles.cameraMessage} pointerEvents="none"><Text style={styles.cameraMessageText}>{cameraError || t('cameraStarting')}</Text></View>}
+      </View> : !permission?.granted ? <TouchableOpacity style={styles.permissionButton} onPress={requestPermission}>
         <Text style={styles.buttonText}>{t('enableCamera')}</Text>
-      </TouchableOpacity>}
+      </TouchableOpacity> : null}
 
       {loading && <ActivityIndicator size="large" color="#2563eb" style={styles.loader} />}
 
@@ -150,8 +167,8 @@ export default function ScannerScreen() {
         <Text style={styles.row}>{t('batch')}: {unit.batchNo}</Text>
         <Text style={styles.row}>{t('barcode')}: {unit.barcode}</Text>
         <Text style={styles.row}>{t('rack')}: {unit.addressCode || t('unassignedRack')}</Text>
-        <Text style={styles.row}>{t('expiration')}: {unit.expirationDate ? new Date(unit.expirationDate).toLocaleDateString() : '-'}</Text>
-        <Text style={styles.row}>{t('status')}: {unit.status}</Text>
+        <Text style={styles.row}>{t('expiration')}: {unit.expirationDate ? new Date(unit.expirationDate).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US') : '-'}</Text>
+        <Text style={styles.row}>{t('status')}: {['InStock', 'AVAILABLE'].includes(unit.status) ? t('inStockStatus') : unit.status === 'Depleted' ? t('depleted') : unit.status}</Text>
 
         <TouchableOpacity style={[styles.consumeButton, unit.status === 'Depleted' && styles.disabled]} onPress={consume} disabled={loading || unit.status === 'Depleted'}>
           <Text style={styles.consumeText}>{unit.status === 'Depleted' ? t('depleted') : t('consume')}</Text>
@@ -187,6 +204,9 @@ const styles = StyleSheet.create({
   continueButton: { backgroundColor: '#2563eb', borderRadius: 10, padding: 13, alignItems: 'center', marginTop: 14 },
   buttonText: { color: '#fff', fontWeight: '700' },
   cameraBox: { height: 300, borderRadius: 16, overflow: 'hidden', backgroundColor: '#111827', alignItems: 'center', justifyContent: 'center' },
+  cameraPreview: { width: '100%', height: '100%', position: 'absolute', top: 0, left: 0 },
+  cameraMessage: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', padding: 20 },
+  cameraMessageText: { color: '#fff', fontWeight: '700', textAlign: 'center' },
   reticle: { width: 210, height: 210, borderWidth: 3, borderColor: '#22c55e', borderRadius: 14 },
   loader: { marginVertical: 12 },
   card: { backgroundColor: '#fff', padding: 22, borderRadius: 16, borderWidth: 1, borderColor: '#e5e7eb', gap: 8 },

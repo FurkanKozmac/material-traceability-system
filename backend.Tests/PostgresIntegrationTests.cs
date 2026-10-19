@@ -23,7 +23,7 @@ public class PostgresIntegrationTests(PostgresTestDatabase database)
         var task = await context.RelocationTasks
             .Include(item => item.Unit)
             .Include(item => item.ToAddress)
-            .SingleAsync(item => item.Unit.Barcode == "BAR-DEMO-UNIT-010" && item.Status == "Pending");
+            .SingleAsync(item => item.Unit.Barcode == "UNIT-DEMO-UNIT-010" && item.Status == "Pending");
         var sourceAddressId = task.FromAddressId;
         var service = new RelocationTaskService(context, new LowStockChannel());
 

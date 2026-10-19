@@ -26,8 +26,7 @@ const quickActions = [
 ];
 
 function getErrorMessage(error, fallback) {
-  const data = error.response?.data;
-  return data?.message || data?.title || (typeof data === 'string' ? data : fallback);
+  return fallback;
 }
 
 export default function SafetyAssistant() {
@@ -84,17 +83,6 @@ export default function SafetyAssistant() {
 
   return (
     <Box sx={{ maxWidth: 1280, mx: 'auto', width: '100%', pb: 5 }}>
-      <Paper sx={{ p: { xs: 2.5, md: 4 }, mb: 3, borderRadius: 3, color: '#fff', overflow: 'hidden', position: 'relative', background: 'linear-gradient(125deg, #102a43 0%, #145374 62%, #197278 100%)', boxShadow: '0 16px 32px rgba(15, 42, 67, 0.18)' }}>
-        <Box sx={{ position: 'absolute', right: { xs: -70, md: 30 }, top: -80, width: 240, height: 240, border: '1px solid rgba(255,255,255,0.14)', borderRadius: '50%' }} />
-        <Stack direction="row" spacing={2} alignItems="flex-start" sx={{ position: 'relative' }}>
-          <Box sx={{ p: 1.5, borderRadius: 2.5, backgroundColor: 'rgba(255,255,255,0.13)', display: 'flex' }}><ShieldCheck size={30} /></Box>
-          <Box>
-            <Typography variant="h4" sx={{ fontWeight: 750, letterSpacing: '-0.02em', fontSize: { xs: '1.65rem', md: '2.1rem' } }}>🛡️ {safety('title')} (RAG)</Typography>
-            <Typography sx={{ mt: 1, color: '#d8edf2', maxWidth: 680 }}>{safety('subtitle')}</Typography>
-          </Box>
-        </Stack>
-      </Paper>
-
       <Box sx={{ display: 'grid', gridTemplateColumns: { xs: '1fr', lg: 'minmax(280px, 0.75fr) minmax(0, 1.6fr)' }, gap: 3 }}>
         <Stack spacing={3}>
           <Paper sx={{ p: 3, borderRadius: 2.5, border: '1px solid #e5e7eb', boxShadow: '0 4px 12px rgba(15, 23, 42, 0.04)' }}>
@@ -102,7 +90,7 @@ export default function SafetyAssistant() {
             <FormControl fullWidth size="small">
               <InputLabel id="chemical-select-label">{safety('selectChemical')}</InputLabel>
               <Select labelId="chemical-select-label" value={chemicalCode} label={safety('selectChemical')} onChange={(event) => setChemicalCode(event.target.value)}>
-                {chemicals.length === 0 && <MenuItem value="CC-202">CC-202 - Clear Coat</MenuItem>}
+                {chemicals.length === 0 && <MenuItem value="CC-202">{safety('fallbackChemicalName')}</MenuItem>}
                 {chemicals.map((chemical) => <MenuItem key={chemical.id || chemical.chemicalCode} value={chemical.chemicalCode}>{chemical.chemicalCode} - {chemical.name}</MenuItem>)}
               </Select>
             </FormControl>

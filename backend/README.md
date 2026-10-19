@@ -14,10 +14,10 @@ An enterprise-grade, high-performance **Warehouse Management System (WMS)** back
 
 ## 📦 Domain Model (7 Core Entities)
 
-1. **Chemical:** Master catalog for chemical definitions, CAS/internal codes, and safety data sheets (MSDS).
+1. **Chemical:** Master catalog for chemical definitions, CAS/internal codes, and Safety Data Sheets (SDS).
 2. **Batch:** Inbound lot tracking with supplier details, lot numbers, and expiration dates.
 3. **Address:** Warehouse physical storage locations/shelves with capacity constraints.
-4. **Unit:** Individual barcoded physical barrels/containers in stock.
+4. **Unit:** An individually barcoded stock unit tracked in inventory.
 5. **RelocationTask:** Traceable workflow state machine managing inventory transfers from shelf to shelf.
 6. **User & Role:** Role-Based Access Control (RBAC) separating administrative and warehouse operator duties.
 

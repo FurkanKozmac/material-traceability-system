@@ -35,7 +35,7 @@ export default function Login() {
         navigate('/dashboard');
       }, 500);
     } catch (err) {
-      setError(err.response?.data?.message || t('loginFailed'));
+      setError(t('loginFailed'));
       setLoading(false);
     }
   };
@@ -163,7 +163,7 @@ export default function Login() {
                 endAdornment: (
                   <InputAdornment position="end">
                     <IconButton
-                      aria-label="Parola görünürlüğünü değiştir"
+                      aria-label={t('togglePasswordVisibility')}
                       onClick={() => setShowPassword(!showPassword)}
                       edge="end"
                       size="small"

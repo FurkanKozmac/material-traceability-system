@@ -20,7 +20,7 @@ public class UnitsController(IUnitService unitService) : ControllerBase
     {
         var unit = await unitService.GetByBarcodeAsync(barcode, ct);
         if (unit is null)
-            return NotFound($"'{barcode}' barkodlu varil bulunamadı.");
+            return NotFound($"'{barcode}' barkodlu stok birimi bulunamadı.");
 
         return Ok(unit);
     }

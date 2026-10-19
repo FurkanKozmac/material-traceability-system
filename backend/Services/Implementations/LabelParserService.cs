@@ -10,6 +10,10 @@ namespace backend.Services.Implementations;
 
 public sealed class LabelParserService(MtsDbContext context) : ILabelParserService
 {
+    private static readonly Regex HeuristicLotCodeRegex = new(
+        @"(?<![A-Z0-9])(?<lot>[A-Z0-9]{2,}(?:-[A-Z0-9]+)+)(?![A-Z0-9])",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
     private static readonly Regex LotRegex = new(
         // Do not interpret the LOT segment inside a value such as TEST-LOT-41 as
         // a new marker; otherwise the match starts at LOT and returns only 41.
@@ -21,15 +25,20 @@ public sealed class LabelParserService(MtsDbContext context) : ILabelParserServi
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     private static readonly Regex ExpirationMarkerRegex = new(
-        @"\b(?:EXP(?:IRY|IRATION)?|SKT|BBD|BEST\s+BEFORE)\b",
+        @"(?:\b(?:EXP(?:IRY|IRATION)?|SKT|BBD|BEST\s+BEFORE)\b|n?XP|O7|07)",
+        RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
+
+    private static readonly Regex AttachedOcrPrefixRegex = new(
+        @"^(?:O7|07)(?=[A-Z0-9]{2,}(?:-[A-Z0-9]+)+$)",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant | RegexOptions.Compiled);
 
     public async Task<BatchLabelScanResultDto> ParseAsync(string rawText, CancellationToken ct = default)
     {
         rawText ??= string.Empty;
-        var lot = LotRegex.Match(rawText).Groups[1].Value.Trim().TrimEnd('.', ',', ';');
-        var expiration = ExtractExpiration(rawText);
-        var chemical = await SuggestChemicalAsync(rawText, ct);
+        var (expiration, withoutDates) = ExtractExpirationAndMask(rawText);
+        var lines = withoutDates.Split('\n').ToList();
+        var chemical = await SuggestChemicalAndRemoveLineAsync(lines, ct);
+        var lot = ExtractLot(string.Join('\n', lines));
 
         return new BatchLabelScanResultDto(
             chemical?.Id,
@@ -40,9 +49,9 @@ public sealed class LabelParserService(MtsDbContext context) : ILabelParserServi
             string.IsNullOrWhiteSpace(lot) ? string.Empty : $"BAT-{lot}");
     }
 
-    private async Task<ChemicalCandidate?> SuggestChemicalAsync(string text, CancellationToken ct)
+    private async Task<ChemicalCandidate?> SuggestChemicalAndRemoveLineAsync(List<string> lines, CancellationToken ct)
     {
-        if (string.IsNullOrWhiteSpace(text))
+        if (lines.All(string.IsNullOrWhiteSpace))
             return null;
 
         var chemicals = await context.Chemicals.AsNoTracking()
@@ -53,24 +62,26 @@ public sealed class LabelParserService(MtsDbContext context) : ILabelParserServi
         if (chemicals.Count == 0)
             return null;
 
-        var normalizedText = Normalize(text);
-        var exact = chemicals
-            .SelectMany(chemical => new[]
+        var scored = lines.Select((line, index) => new { Line = line, Index = index })
+            .Where(item => !string.IsNullOrWhiteSpace(item.Line))
+            .SelectMany(item => chemicals.Select(chemical =>
             {
-                (Chemical: chemical, Value: Normalize(chemical.ChemicalCode)),
-                (Chemical: chemical, Value: Normalize(chemical.Name))
-            })
-            .Where(candidate => candidate.Value.Length > 0 && ContainsPhrase(normalizedText, candidate.Value))
-            .OrderByDescending(candidate => candidate.Value.Length)
-            .Select(candidate => candidate.Chemical)
-            .FirstOrDefault();
-        if (exact is not null)
-            return exact;
-
-        var scored = chemicals
-            .Select(chemical => (Chemical: chemical, Score: Math.Max(
-                SimilarityToText(Normalize(chemical.Name), normalizedText),
-                SimilarityToText(Normalize(chemical.ChemicalCode), normalizedText))))
+                var normalizedLine = Normalize(item.Line);
+                var code = Normalize(chemical.ChemicalCode);
+                var name = Normalize(chemical.Name);
+                var matchedValue = !string.IsNullOrWhiteSpace(chemical.Name) &&
+                                   ContainsPhrase(normalizedLine, name)
+                    ? chemical.Name
+                    : !string.IsNullOrWhiteSpace(chemical.ChemicalCode) &&
+                      ContainsPhrase(normalizedLine, code)
+                        ? chemical.ChemicalCode
+                        : null;
+                return (chemical, item.Index, item.Line, matchedValue, Score: matchedValue is not null ? 1d : Math.Max(
+                    SimilarityToText(name, normalizedLine),
+                    SimilarityToText(code, normalizedLine)));
+            }))
+            .GroupBy(candidate => candidate.chemical.Id)
+            .Select(group => group.OrderByDescending(candidate => candidate.Score).First())
             .OrderByDescending(candidate => candidate.Score)
             .ToList();
 
@@ -79,26 +90,85 @@ public sealed class LabelParserService(MtsDbContext context) : ILabelParserServi
         if (scored.Count > 1 && Math.Abs(scored[0].Score - scored[1].Score) < 0.03)
             return null;
 
-        return scored[0].Chemical;
+        lines[scored[0].Index] = RemoveMatchedChemical(scored[0].Line, scored[0].matchedValue);
+        return scored[0].chemical;
     }
 
-    private static DateTime? ExtractExpiration(string rawText)
+    private static string RemoveMatchedChemical(string line, string? matchedValue)
     {
-        var candidates = DateRegex.Matches(rawText)
+        if (!string.IsNullOrWhiteSpace(matchedValue))
+            return Regex.Replace(line, Regex.Escape(matchedValue), " ", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+
+        // A fuzzy chemical match can share a line with a lot code. Preserve the
+        // explicitly marked suffix so removing the chemical does not discard it.
+        var lotMarker = LotRegex.Match(line);
+        return lotMarker.Success ? line[lotMarker.Index..] : string.Empty;
+    }
+
+    private static (DateTime? Expiration, string RemainingText) ExtractExpirationAndMask(string rawText)
+    {
+        var matches = DateRegex.Matches(rawText)
             .Select(match => new
             {
                 Value = ParseExpiration(match),
-                match.Index,
-                IsLabeled = ExpirationMarkerRegex.IsMatch(rawText[
-                    Math.Max(0, match.Index - 40)..match.Index])
+                Match = match
             })
             .Where(candidate => candidate.Value.HasValue)
-            .OrderByDescending(candidate => candidate.Value!.Value.Date >= DateTime.UtcNow.Date)
-            .ThenByDescending(candidate => candidate.IsLabeled)
-            .ThenBy(candidate => candidate.Index)
             .ToList();
 
-        return candidates.FirstOrDefault()?.Value;
+        var expiration = matches
+            .OrderByDescending(candidate => candidate.Value!.Value.Date >= DateTime.UtcNow.Date)
+            .ThenByDescending(candidate => ExpirationMarkerRegex.IsMatch(
+                GetLinePrefix(rawText, candidate.Match.Index)))
+            .ThenBy(candidate => candidate.Match.Index)
+            .FirstOrDefault()?.Value;
+
+        var chars = rawText.ToCharArray();
+        foreach (var candidate in matches)
+        {
+            var match = candidate.Match;
+            for (var i = match.Index; i < match.Index + match.Length; i++)
+                chars[i] = ' ';
+
+            var lineStart = rawText.LastIndexOf('\n', Math.Max(0, match.Index - 1));
+            lineStart = lineStart < 0 ? 0 : lineStart + 1;
+            var prefix = rawText[lineStart..match.Index];
+            var marker = ExpirationMarkerRegex.Match(prefix);
+            if (marker.Success && string.IsNullOrWhiteSpace(prefix[(marker.Index + marker.Length)..]))
+            {
+                for (var i = lineStart + marker.Index; i < match.Index; i++)
+                    chars[i] = ' ';
+            }
+        }
+
+        return (expiration, new string(chars));
+    }
+
+    private static string GetLinePrefix(string text, int position)
+    {
+        var lineStart = text.LastIndexOf('\n', Math.Max(0, position - 1));
+        lineStart = lineStart < 0 ? 0 : lineStart + 1;
+        return text[lineStart..position];
+    }
+
+    private static string? ExtractLot(string remainingText)
+    {
+        var explicitMatch = LotRegex.Match(remainingText);
+        if (explicitMatch.Success)
+        {
+            var explicitValue = explicitMatch.Groups[1].Value.Trim().TrimEnd('.', ',', ';');
+            if (explicitValue.Length >= 3 && explicitValue.Any(char.IsDigit))
+                return explicitValue;
+        }
+
+        var candidates = HeuristicLotCodeRegex.Matches(remainingText)
+            .Select(match => AttachedOcrPrefixRegex.Replace(
+                match.Groups["lot"].Value.Trim('-', '.', ',', ';', ':'), string.Empty))
+            .Where(value => value.Length >= 4 && value.Any(char.IsDigit))
+            .ToList();
+        if (candidates.Count > 0)
+            return candidates.OrderByDescending(value => value.Length).First();
+        return null;
     }
 
     private static DateTime? ParseExpiration(Match match)

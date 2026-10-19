@@ -9,7 +9,13 @@
     "ios": {
       "supportsTablet": true,
       "bundleIdentifier": "com.mts.mobileterminal",
-      "buildNumber": "1"
+      "buildNumber": "1",
+      "infoPlist": {
+        "NSLocalNetworkUsageDescription": "MTS connects to the development API running on your computer's local network.",
+        "NSAppTransportSecurity": {
+          "NSAllowsLocalNetworking": true
+        }
+      }
     },
     "android": {
       "package": "com.mts.mobileterminal",
@@ -33,7 +39,17 @@
           "cameraPermission": "Allow MTS to access your camera to scan material barcodes."
         }
       ],
-      "expo-secure-store"
+      "expo-secure-store",
+      [
+        "expo-build-properties",
+        {
+          "ios": {
+            "enableSceneSupport": true
+          }
+        }
+      ],
+      "./plugins/with-rn-metro-ip-output.cjs",
+      "expo-status-bar"
     ]
   }
 }

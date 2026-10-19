@@ -34,7 +34,7 @@ export default function SettingsScreen() {
         { text: 'OK', onPress: () => router.back() }
       ]);
     } catch (e) {
-      Alert.alert(t('connectionFailed'), e.message || t('connectionFailed'));
+      Alert.alert(t('connectionFailed'), t('connectionFailedMessage'));
     } finally {
       setTesting(false);
     }
@@ -49,7 +49,7 @@ export default function SettingsScreen() {
         <Text style={styles.label}>{t('backendAddress')}</Text>
         <TextInput
           style={styles.input}
-          placeholder="Örn. 192.168.1.25:5059"
+          placeholder={t('backendAddressExample')}
           value={ip}
           onChangeText={setIp}
           autoCapitalize="none"

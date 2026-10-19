@@ -211,10 +211,10 @@ public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowSto
     private static void EnsureUnitCanBeRelocated(string status, DateTime? expirationDate, bool chemicalStopped)
     {
         if (status != "InStock" && status != "AVAILABLE")
-            throw new BusinessRuleException("Yalnızca stokta bulunan bir varil taşınabilir!");
+            throw new BusinessRuleException("Yalnızca stokta bulunan birim taşınabilir!");
         if (expirationDate.HasValue && expirationDate.Value < DateTime.UtcNow)
-            throw new BusinessRuleException("Son kullanma tarihi geçmiş bir varil taşınamaz!");
+            throw new BusinessRuleException("Son kullanma tarihi geçmiş birim taşınamaz!");
         if (chemicalStopped)
-            throw new BusinessRuleException("Durdurulmuş kimyasala ait bir varil taşınamaz!");
+            throw new BusinessRuleException("Durdurulmuş kimyasala ait birim taşınamaz!");
     }
 }

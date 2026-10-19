@@ -66,10 +66,9 @@ export default function Settings() {
       setEnabled(data.enableLowStockAlerts);
       setMessage({ type: 'success', text: t('notificationSettingsSaved') });
     } catch (error) {
-      const apiMessage = error.response?.data?.message;
       setMessage({
         type: 'error',
-        text: apiMessage?.includes('e-posta') ? t('invalidNotificationEmail') : t('notificationSettingsSaveFailed'),
+        text: t('notificationSettingsSaveFailed'),
       });
     } finally {
       setSavingNotifications(false);

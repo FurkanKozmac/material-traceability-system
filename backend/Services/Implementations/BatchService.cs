@@ -83,7 +83,7 @@ public class BatchService(MtsDbContext context) : IBatchService
 
         if (initialAddress is null)
             throw new BusinessRuleException(
-                $"{chemical.StorageType} depolama türünde, partideki variller için yeterli kapasiteye sahip bir raf bulunamadı!",
+                $"{chemical.StorageType} depolama türündeki stok birimleri için yeterli kapasiteye sahip bir raf bulunamadı!",
                 "INSUFFICIENT_RACK_CAPACITY",
                 new { storageType = chemical.StorageType });
 
@@ -114,7 +114,7 @@ public class BatchService(MtsDbContext context) : IBatchService
         {
             batch.Units.Add(new Unit
             {
-                Barcode = $"BAR-{request.BatchNo}-{index:D3}",
+                Barcode = $"UNIT-{request.BatchNo}-{index:D3}",
                 Status = "InStock",
                 Version = 1,
                 AddressId = lockedAddress.Id

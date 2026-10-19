@@ -44,7 +44,7 @@ export default function LoginScreen() {
       await AsyncStorage.setItem('operator_name', operator.trim());
       router.replace('/mode');
     } catch (e) {
-      Alert.alert(t('loginFailed'), e.message || 'Oturum açılamadı.');
+      Alert.alert(t('loginFailed'), t('loginFailureMessage'));
     } finally {
       setSubmitting(false);
     }
@@ -71,7 +71,7 @@ export default function LoginScreen() {
 
         <View style={styles.header}>
           <View style={styles.logoDot} />
-          <Text style={styles.logoText}>MTS Terminal</Text>
+          <Text style={styles.logoText}>{t('appName')}</Text>
         </View>
         
         <Text style={styles.title}>{t('title')}</Text>

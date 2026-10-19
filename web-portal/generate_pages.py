@@ -7,7 +7,7 @@ pages = {
     "HmsReceive": "HMS Receive",
     "ReLifeDashboard": "Re-Life Requests",
     "HmsPick": "HMS Pick",
-    "BarrelPicking": "Barrel Picking",
+    "StockUnitPicking": "Stock Unit Picking",
     "TankerLoad": "Tanker Load",
     "VehicleTrace": "Vehicle Trace"
 }

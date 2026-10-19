@@ -3,6 +3,7 @@ using backend.Services.Implementations;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Hosting;
+using Microsoft.Extensions.Logging.Abstractions;
 using Moq;
 using System.Net;
 using System.Text;
@@ -19,7 +20,7 @@ public sealed class OcrServiceTests
             ["Ocr:Mode"] = "Sample",
             ["Ocr:SampleText"] = "LOT: LOCAL-123 EXP: 2027-11-15"
         }).Build();
-        var service = new OcrService(new HttpClient(), configuration, CreateEnvironment("Testing"));
+        var service = new OcrService(new HttpClient(), configuration, CreateEnvironment("Testing"), NullLogger<OcrService>.Instance);
 
         var text = await service.ExtractTextAsync(new MemoryStream([1, 2, 3]), "image/png");
 
@@ -33,7 +34,7 @@ public sealed class OcrServiceTests
         {
             ["Ocr:Mode"] = "Remote"
         }).Build();
-        var service = new OcrService(new HttpClient(), configuration, CreateEnvironment("Production"));
+        var service = new OcrService(new HttpClient(), configuration, CreateEnvironment("Production"), NullLogger<OcrService>.Instance);
 
         var error = await Assert.ThrowsAsync<OcrServiceUnavailableException>(() =>
             service.ExtractTextAsync(new MemoryStream([1]), "image/jpeg"));
@@ -49,7 +50,7 @@ public sealed class OcrServiceTests
             ["Ocr:Mode"] = "Remote",
             ["Ocr:Endpoint"] = "http://ocr.example.test/parse"
         }).Build();
-        var service = new OcrService(new HttpClient(), configuration, CreateEnvironment("Production"));
+        var service = new OcrService(new HttpClient(), configuration, CreateEnvironment("Production"), NullLogger<OcrService>.Instance);
 
         var error = await Assert.ThrowsAsync<OcrServiceUnavailableException>(() =>
             service.ExtractTextAsync(new MemoryStream([1]), "image/jpeg"));
@@ -58,18 +59,18 @@ public sealed class OcrServiceTests
     }
 
     [Fact]
-    public async Task ProductionRemoteMode_AllowsInternalTesseractEndpoint()
+    public async Task ProductionRemoteMode_AllowsInternalPaddleOcrEndpoint()
     {
         using var client = new HttpClient(new StubHttpMessageHandler(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = new StringContent("{\"data\":{\"exit\":{\"code\":0},\"stdout\":\"LOT: LOCAL-42\"}}", Encoding.UTF8, "application/json")
+            Content = new StringContent("{\"text\":\"LOT: LOCAL-42\"}", Encoding.UTF8, "application/json")
         }));
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Ocr:Mode"] = "Remote",
-            ["Ocr:Endpoint"] = "http://ocr-service:8080/tesseract"
+            ["Ocr:Endpoint"] = "http://ocr-service:8080/ocr"
         }).Build();
-        var service = new OcrService(client, configuration, CreateEnvironment("Production"));
+        var service = new OcrService(client, configuration, CreateEnvironment("Production"), NullLogger<OcrService>.Instance);
 
         var text = await service.ExtractTextAsync(new MemoryStream([1, 2, 3]), "image/png");
 
@@ -83,14 +84,14 @@ public sealed class OcrServiceTests
         {
             ["Ocr:Mode"] = "Sample"
         }).Build();
-        var service = new OcrService(new HttpClient(), configuration, CreateEnvironment("Production"));
+        var service = new OcrService(new HttpClient(), configuration, CreateEnvironment("Production"), NullLogger<OcrService>.Instance);
 
         await Assert.ThrowsAsync<OcrServiceUnavailableException>(() =>
             service.ExtractTextAsync(new MemoryStream([1]), "image/jpeg"));
     }
 
     [Fact]
-    public async Task RemoteModePostsImageAndParsesProviderContract()
+    public async Task RemoteModePostsImageAndParsesPaddleOcrContract()
     {
         string? requestMediaType = null;
         using var client = new HttpClient(new StubHttpMessageHandler(request =>
@@ -98,21 +99,19 @@ public sealed class OcrServiceTests
             requestMediaType = request.Content?.Headers.ContentType?.MediaType;
             var multipartBody = request.Content!.ReadAsStringAsync().GetAwaiter().GetResult();
             Assert.Contains("name=file", multipartBody);
-            Assert.Contains("name=options", multipartBody);
-            Assert.Contains("\"languages\":[\"eng\",\"tur\"]", multipartBody);
-            Assert.EndsWith("/tesseract", request.RequestUri!.AbsolutePath);
+            Assert.DoesNotContain("name=options", multipartBody);
+            Assert.EndsWith("/ocr", request.RequestUri!.AbsolutePath);
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("{\"data\":{\"exit\":{\"code\":0},\"stdout\":\"LOT: REMOTE-42\"}}", Encoding.UTF8, "application/json")
+                Content = new StringContent("{\"text\":\"LOT: REMOTE-42\"}", Encoding.UTF8, "application/json")
             };
         }));
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
             ["Ocr:Mode"] = "Remote",
-            ["Ocr:Endpoint"] = "https://ocr.example.test/tesseract",
-            ["Ocr:Languages"] = "eng+tur"
+            ["Ocr:Endpoint"] = "https://ocr.example.test/ocr"
         }).Build();
-        var service = new OcrService(client, configuration, CreateEnvironment("Testing"));
+        var service = new OcrService(client, configuration, CreateEnvironment("Testing"), NullLogger<OcrService>.Instance);
 
         var text = await service.ExtractTextAsync(new MemoryStream([1, 2, 3]), "image/png");
 

@@ -44,35 +44,35 @@ public static class DemoDataSeeder
 
     private static readonly UnitSeed[] Units =
     [
-        new("BAR-DEMO-UNIT-001", "DEMO-BAT-001", "DEMO-RACK-GEN-01"),
-        new("BAR-DEMO-UNIT-002", "DEMO-BAT-001", "DEMO-RACK-GEN-01"),
-        new("BAR-DEMO-UNIT-003", "DEMO-BAT-001", "DEMO-RACK-GEN-01"),
-        new("BAR-DEMO-UNIT-004", "DEMO-BAT-002", "DEMO-RACK-SOL-01"),
-        new("BAR-DEMO-UNIT-005", "DEMO-BAT-002", "DEMO-RACK-SOL-01"),
-        new("BAR-DEMO-UNIT-006", "DEMO-BAT-002", "DEMO-RACK-SOL-01"),
-        new("BAR-DEMO-UNIT-007", "DEMO-BAT-002", "DEMO-RACK-SOL-01"),
-        new("BAR-DEMO-UNIT-008", "DEMO-BAT-003", "DEMO-RACK-SOL-01"),
-        new("BAR-DEMO-UNIT-009", "DEMO-BAT-003", "DEMO-RACK-SOL-01"),
-        new("BAR-DEMO-UNIT-010", "DEMO-BAT-004", "DEMO-RACK-PNT-01"),
-        new("BAR-DEMO-UNIT-011", "DEMO-BAT-004", "DEMO-RACK-PNT-01"),
-        new("BAR-DEMO-UNIT-012", "DEMO-BAT-004", "DEMO-RACK-PNT-01"),
-        new("BAR-DEMO-UNIT-013", "DEMO-BAT-005", "DEMO-RACK-FLM-01"),
-        new("BAR-DEMO-UNIT-014", "DEMO-BAT-005", "DEMO-RACK-FLM-01"),
-        new("BAR-DEMO-UNIT-015", "DEMO-BAT-005", "DEMO-RACK-FLM-01"),
-        new("BAR-DEMO-UNIT-016", "DEMO-BAT-006", "DEMO-RACK-COR-01"),
-        new("BAR-DEMO-UNIT-017", "DEMO-BAT-006", "DEMO-RACK-COR-01"),
-        new("BAR-DEMO-UNIT-018", "DEMO-BAT-007", "DEMO-RACK-PNT-01"),
-        new("BAR-DEMO-UNIT-019", "DEMO-BAT-007", "DEMO-RACK-PNT-01"),
-        new("BAR-DEMO-UNIT-020", "DEMO-BAT-008", "DEMO-RACK-FLM-01"),
-        new("BAR-DEMO-UNIT-021", "DEMO-BAT-008", "DEMO-RACK-FLM-01")
+        new("UNIT-DEMO-UNIT-001", "DEMO-BAT-001", "DEMO-RACK-GEN-01"),
+        new("UNIT-DEMO-UNIT-002", "DEMO-BAT-001", "DEMO-RACK-GEN-01"),
+        new("UNIT-DEMO-UNIT-003", "DEMO-BAT-001", "DEMO-RACK-GEN-01"),
+        new("UNIT-DEMO-UNIT-004", "DEMO-BAT-002", "DEMO-RACK-SOL-01"),
+        new("UNIT-DEMO-UNIT-005", "DEMO-BAT-002", "DEMO-RACK-SOL-01"),
+        new("UNIT-DEMO-UNIT-006", "DEMO-BAT-002", "DEMO-RACK-SOL-01"),
+        new("UNIT-DEMO-UNIT-007", "DEMO-BAT-002", "DEMO-RACK-SOL-01"),
+        new("UNIT-DEMO-UNIT-008", "DEMO-BAT-003", "DEMO-RACK-SOL-01"),
+        new("UNIT-DEMO-UNIT-009", "DEMO-BAT-003", "DEMO-RACK-SOL-01"),
+        new("UNIT-DEMO-UNIT-010", "DEMO-BAT-004", "DEMO-RACK-PNT-01"),
+        new("UNIT-DEMO-UNIT-011", "DEMO-BAT-004", "DEMO-RACK-PNT-01"),
+        new("UNIT-DEMO-UNIT-012", "DEMO-BAT-004", "DEMO-RACK-PNT-01"),
+        new("UNIT-DEMO-UNIT-013", "DEMO-BAT-005", "DEMO-RACK-FLM-01"),
+        new("UNIT-DEMO-UNIT-014", "DEMO-BAT-005", "DEMO-RACK-FLM-01"),
+        new("UNIT-DEMO-UNIT-015", "DEMO-BAT-005", "DEMO-RACK-FLM-01"),
+        new("UNIT-DEMO-UNIT-016", "DEMO-BAT-006", "DEMO-RACK-COR-01"),
+        new("UNIT-DEMO-UNIT-017", "DEMO-BAT-006", "DEMO-RACK-COR-01"),
+        new("UNIT-DEMO-UNIT-018", "DEMO-BAT-007", "DEMO-RACK-PNT-01"),
+        new("UNIT-DEMO-UNIT-019", "DEMO-BAT-007", "DEMO-RACK-PNT-01"),
+        new("UNIT-DEMO-UNIT-020", "DEMO-BAT-008", "DEMO-RACK-FLM-01"),
+        new("UNIT-DEMO-UNIT-021", "DEMO-BAT-008", "DEMO-RACK-FLM-01")
     ];
 
     private static readonly RelocationSeed[] Relocations =
     [
-        new("BAR-DEMO-UNIT-004", "DEMO-RACK-SOL-01", "DEMO-RACK-SOL-02"),
-        new("BAR-DEMO-UNIT-010", "DEMO-RACK-PNT-01", "DEMO-RACK-PNT-02"),
-        new("BAR-DEMO-UNIT-013", "DEMO-RACK-FLM-01", "DEMO-RACK-FLM-02"),
-        new("BAR-DEMO-UNIT-016", "DEMO-RACK-COR-01", "DEMO-RACK-COR-02")
+        new("UNIT-DEMO-UNIT-004", "DEMO-RACK-SOL-01", "DEMO-RACK-SOL-02"),
+        new("UNIT-DEMO-UNIT-010", "DEMO-RACK-PNT-01", "DEMO-RACK-PNT-02"),
+        new("UNIT-DEMO-UNIT-013", "DEMO-RACK-FLM-01", "DEMO-RACK-FLM-02"),
+        new("UNIT-DEMO-UNIT-016", "DEMO-RACK-COR-01", "DEMO-RACK-COR-02")
     ];
 
     public static async Task SeedAsync(MtsDbContext context, CancellationToken ct = default)

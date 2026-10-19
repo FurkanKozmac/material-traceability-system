@@ -1,8 +1,9 @@
 import React, { useCallback, useEffect, useState, memo } from 'react';
 import { Box, Typography, Grid, Paper, Table, TableBody, TableCell, TableHead, TableRow, Chip, LinearProgress } from '@mui/material';
-import { Layers, AlertTriangle, CheckCircle, Clock, Info } from 'lucide-react';
+import { Layers, AlertTriangle, CheckCircle, Clock } from 'lucide-react';
 import api from '../api';
 import useWebSocket from '../hooks/useWebSocket';
+import useSignalR from '../hooks/useSignalR';
 import { useLanguage } from '../useLanguage';
 
 const StatCard = memo(({ title, value, icon, color, bgColor }) => (
@@ -22,7 +23,7 @@ const StatCard = memo(({ title, value, icon, color, bgColor }) => (
 ));
 
 const Dashboard = memo(() => {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [stats, setStats] = useState({
     totalAvailable: 0,
     totalConsumed: 0,
@@ -58,37 +59,21 @@ const Dashboard = memo(() => {
     fetchDashboardData();
   });
 
+  useSignalR('BatchCreated', () => {
+    fetchDashboardData();
+  });
+
   if (stats.loading) {
     return <Box sx={{ p: 4 }}><LinearProgress /></Box>;
   }
 
   return (
     <Box sx={{ pb: 4 }}>
-      {/* Welcome Banner */}
-      <Paper sx={{ 
-        p: 3, mb: 4, borderRadius: 3, 
-        background: 'linear-gradient(135deg, #0f172a 0%, #1e293b 100%)',
-        color: 'white', display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        boxShadow: '0 10px 15px -3px rgba(0, 0, 0, 0.1)'
-      }}>
-        <Box sx={{ display: 'flex', alignItems: 'center', gap: 2 }}>
-          <Box sx={{ p: 1.5, borderRadius: 2, backgroundColor: 'rgba(255,255,255,0.1)' }}>
-            <Info size={28} color="#60a5fa" />
-          </Box>
-          <Box>
-            <Typography variant="h5" sx={{ fontWeight: 700, mb: 0.5 }}>{t('dashboardTitle')}</Typography>
-            <Typography variant="body2" sx={{ color: '#cbd5e1' }}>
-              {t('dashboardDesc')}
-            </Typography>
-          </Box>
-        </Box>
-      </Paper>
-      
       {/* Top Stat Cards */}
       <Grid container spacing={3} sx={{ mb: 4 }}>
         <Grid size={{ xs: 12, sm: 6, md: 3 }}>
           <StatCard 
-            title={t('inStockDrums')} 
+            title={t('inStockUnits')}
             value={stats.totalAvailable} 
             icon={<Layers size={28} />} 
             color="#0ea5e9" 
@@ -156,7 +141,7 @@ const Dashboard = memo(() => {
               stats.recentActivity.map((activity, idx) => (
                 <TableRow key={idx} hover>
                   <TableCell sx={{ color: '#6b7280', fontSize: '0.85rem' }}>
-                    {new Date(activity.time).toLocaleString()}
+                    {new Date(activity.time).toLocaleString(language === 'tr' ? 'tr-TR' : 'en-US')}
                   </TableCell>
                   <TableCell>
                     <Chip label={t('consumed')} size="small" sx={{ backgroundColor: '#dcfce7', color: '#166534', fontWeight: 600, fontSize: '0.7rem' }} />

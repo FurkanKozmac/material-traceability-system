@@ -12,7 +12,7 @@ Material Traceability System is an end-to-end industrial Warehouse Management Sy
 </p>
 
 <p align="center">
-  <img src="./docs/images/batch-management.png" width="49%" alt="Raw Material Lot Batches" />
+  <img src="./docs/images/batch-management.png" width="49%" alt="Material Lot Batches" />
   <img src="./docs/images/qr-labels.png" width="49%" alt="QR Barcode Printing Manager" />
 </p>
 
@@ -56,6 +56,17 @@ docker compose up --build -d
 ```
 
 Only Caddy publishes ports 80 and 443. PostgreSQL, the API, and Nginx stay on the private Compose network. Mailpit is disabled by default; start it only for local email testing with `docker compose --profile dev up --build -d`.
+
+### Physical iOS terminal on the local network
+
+The API is private to the Compose network by default. To connect a physical iPhone during local development, opt in to the LAN-only override and bind the API to the Mac's current Wi-Fi IP (for example, `192.168.1.157`):
+
+```bash
+MOBILE_API_BIND_ADDRESS=192.168.1.157 docker compose -f docker-compose.yml -f docker-compose.mobile-dev.yml up -d backend
+curl http://192.168.1.157:5059/api/health
+```
+
+Keep the phone and Mac on the same Wi-Fi. In the terminal's **Server Connection Settings**, enter `http://192.168.1.157:5059`. If the Mac's LAN IP changes, use the new IP in both commands. The override is development-only and binds the API to the chosen host IP; requests use HTTP, so use a trusted private network. Do not enable this override in production. The iOS app declares local-network access and ATS local-network support in `app.json`; rebuild and reinstall the iOS app after changing those native settings.
 
 `POSTGRES_PASSWORD` initializes the PostgreSQL role only when the data volume is first created. Changing the environment value later does not change the password stored in an existing volume; update the database role and environment together, or provision a separate volume and migrate data before switching.
 
@@ -143,7 +154,7 @@ The low-stock event is published to an in-memory `System.Threading.Channels` que
 
 `POST /api/batches/scan-label` accepts a JPEG, PNG, or WebP image up to 10 MB and is available to Admin and Operator roles. It returns OCR raw text, suggested chemical match, lot number, expiration date, and the internal `BAT-{lot}` payload. Lot labels include `LOT`, `BATCH`, `PARTI`/`PARTİ`, and `P.NO`; expiration labels include `EXP`, `SKT`, and `BBD` with day/month/year, ISO date, or month/year formats. The user reviews the suggestions before saving.
 
-The Compose deployment runs the open-source Tesseract HTTP server locally. The `ocr-service` container is attached only to an internal Docker network shared with the backend, has no published host port, and handles OCR at `http://ocr-service:8080/tesseract`. The backend sends the uploaded image as multipart field `file` with English and Turkish language options, then passes the returned text to the label parser. The OCR image includes both language data packs and does not download them at runtime. The OCR server is Alpine-based and supports `linux/amd64` and `linux/arm64`.
+The Compose deployment runs an open-source PaddleOCR (PP-OCRv4) FastAPI service locally. The `ocr-service` container is attached only to an internal Docker network shared with the backend, has no published host port, and handles OCR at `http://ocr-service:8080/ocr`. The backend sends the uploaded image as multipart field `file`, then passes the returned text to the label parser. The Docker image caches the English recognition, detection, and angle-classifier model weights during image build, so OCR inference does not contact an external service or download models at runtime. The health endpoint is available to Docker at `http://ocr-service:8080/health`.
 
 In Development outside Compose, `Ocr:Mode=Sample` (configured in `appsettings.Development.json`) remains available for parser/UI tests and returns fixture text without inspecting the uploaded image. Compose explicitly uses `OCR_MODE=Remote` and the local OCR service. If the service is unavailable or returns invalid output, scan returns HTTP 503 with an OCR provider message. No external OCR API or API key is needed by the default deployment.
 

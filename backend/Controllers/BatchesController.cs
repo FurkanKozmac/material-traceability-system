@@ -5,6 +5,8 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.AspNetCore.Authorization;
 using backend.Common.Exceptions;
+using backend.Hubs;
+using Microsoft.AspNetCore.SignalR;
 
 namespace backend.Controllers;
 
@@ -14,7 +16,9 @@ public class BatchesController(
     IBatchService batchService,
     MtsDbContext context,
     IOcrService ocrService,
-    ILabelParserService labelParserService) : ControllerBase
+    ILabelParserService labelParserService,
+    IHubContext<TraceabilityHub> hubContext,
+    ILogger<BatchesController> logger) : ControllerBase
 {
     private const long MaxLabelImageBytes = 10 * 1024 * 1024;
 
@@ -135,6 +139,17 @@ public class BatchesController(
         try
         {
             var batch = await batchService.CreateAsync(request, ct);
+            try
+            {
+                await hubContext.Clients.All.SendAsync("BatchCreated", new { batch.Id, batch.BatchNo }, ct);
+            }
+            catch (Exception ex)
+            {
+                // Persistence has already succeeded; a realtime notification failure must not
+                // turn a successful create into an apparent API failure for the operator.
+                logger.LogWarning(ex, "Batch {BatchId} was created but its realtime notification failed", batch.Id);
+            }
+
             return CreatedAtAction(nameof(GetById), new { id = batch.Id }, batch);
         }
         catch (InvalidOperationException ex)

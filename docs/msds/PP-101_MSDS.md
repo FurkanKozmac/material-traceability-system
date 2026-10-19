@@ -1,4 +1,4 @@
-# Malzeme Güvenlik Bilgi Formu (SDS / MSDS)
+# Malzeme Güvenlik Bilgi Formu (GBF / SDS)
 
 ## PP-101 - Primer Paint
 
@@ -109,7 +109,7 @@ Gözde şiddetli ağrı ve hasar, ciltte kızarıklık/tahriş, buhar solunması
 - Dökülen ürünü emici talaş veya kumla çevreleyip emdirin.
 - Malzemeyi kapalı, etiketli atık kabına aktarın.
 - Kanalizasyona, toprağa ve su kaynaklarına ulaşmasını önleyin.
-- Hasarlı varili güvenliyse ikincil sızdırmazlık içine alın.
+- Hasarlı kabı, güvenliyse ikincil sızdırmaz bir muhafaza içine alın.
 
 ## BÖLÜM 7: Taşıma ve Depolama
 

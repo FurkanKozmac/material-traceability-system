@@ -31,7 +31,7 @@ export default function ChemicalManagement() {
       setMessage({ type: 'success', text: t('chemicalCreated') });
       await load();
     } catch (error) {
-      setMessage({ type: 'error', text: error.response?.data?.message || error.response?.data || t('chemicalCreateFailed') });
+      setMessage({ type: 'error', text: t('chemicalCreateFailed') });
     }
   };
 
@@ -42,7 +42,7 @@ export default function ChemicalManagement() {
       setMessage({ type: 'success', text: t('chemicalDeleted') });
       await load();
     } catch (error) {
-      setMessage({ type: 'error', text: error.response?.data?.message || error.response?.data || t('chemicalDeleteFailed') });
+      setMessage({ type: 'error', text: t('chemicalDeleteFailed') });
     }
   };
 
@@ -65,7 +65,7 @@ export default function ChemicalManagement() {
       setChemicals((previousChemicals) => previousChemicals.map((item) => (
         item.id === chemical.id ? { ...item, storageType: previousStorageType } : item
       )));
-      setMessage({ type: 'error', text: error.response?.data?.message || t('chemicalTypeUpdateFailed') });
+      setMessage({ type: 'error', text: t('chemicalTypeUpdateFailed') });
     }
   };
 
@@ -77,7 +77,7 @@ export default function ChemicalManagement() {
       <TextField required label={t('chemicalName')} value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} />
       <TextField required select label={t('storageType')} value={form.storageType} onChange={(e) => setForm({ ...form, storageType: e.target.value })}>{storageTypes.map((item) => <MenuItem key={item.value} value={item.value}>{item.label}</MenuItem>)}</TextField>
       <TextField label={t('description')} value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} />
-      <TextField label={t('msdsUrl')} value={form.msdsUrl} onChange={(e) => setForm({ ...form, msdsUrl: e.target.value })} />
+      <TextField label={t('safetyDataSheetUrl')} value={form.msdsUrl} onChange={(e) => setForm({ ...form, msdsUrl: e.target.value })} />
       <Button type="submit" variant="contained">{t('saveCreate')}</Button>
     </Paper>}
     <Paper><Table><TableHead><TableRow><TableCell>{t('code')}</TableCell><TableCell>{t('name')}</TableCell><TableCell>{t('storageType')}</TableCell><TableCell>{t('description')}</TableCell><TableCell>{t('status')}</TableCell><TableCell /></TableRow></TableHead>

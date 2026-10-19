@@ -1,4 +1,4 @@
-# Malzeme Güvenlik Bilgi Formu (SDS / MSDS)
+# Malzeme Güvenlik Bilgi Formu (GBF / SDS)
 
 ## CC-202 - Clear Coat
 
@@ -190,7 +190,7 @@ CC-202 bir karışımdır. Bu taslakta ürünün reçetesi ve bileşen konsantra
 
 ### 6.3 Sınırlama ve temizleme yöntemleri
 
-1. **Varil delinmesi veya dökülme** durumunda sızıntıyı güvenliyse durdurun; hasarlı kabı ikincil sızdırmazlık içine alın.
+1. **Kabın hasar görmesi veya malzeme dökülmesi** durumunda, güvenliyse sızıntıyı durdurun ve hasarlı kabı ikincil sızdırmaz bir muhafazaya alın.
 2. Dökülen ürünü **emici talaş veya kum** ile çevreleyin ve emdirin.
 3. Toplanan emici malzemeyi kapalı, etiketli ve kıvılcım kaynaklarından uzak bir atık kabına aktarın.
 4. Temizleme sırasında **kıvılcım çıkaran aletler kesinlikle yasaktır**; yalnızca kıvılcım çıkarmayan ekipman kullanın.

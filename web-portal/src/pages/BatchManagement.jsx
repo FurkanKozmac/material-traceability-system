@@ -5,11 +5,12 @@ import api from '../api';
 import { isAdmin, isOperator } from '../auth';
 import { useLanguage } from '../useLanguage';
 import { getLocalizedApiError } from '../apiError';
+import useSignalR from '../hooks/useSignalR';
 
 const emptyForm = { batchNo: '', supplier: '', initialQuantity: 1, expirationDate: '', chemicalId: '' };
 
 export default function BatchManagement() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const canCreateBatch = isAdmin() || isOperator();
   const [batches, setBatches] = useState([]);
   const [chemicals, setChemicals] = useState([]);
@@ -33,6 +34,10 @@ export default function BatchManagement() {
     setChemicals(chemicalResponse.data);
   };
   useEffect(() => { load().catch(() => setMessage({ type: 'error', text: t('batchLoadFailed') })); }, [t]);
+
+  useSignalR('BatchCreated', () => {
+    load().catch(() => setMessage({ type: 'warning', text: t('batchLoadFailed') }));
+  });
 
   const create = async (event) => {
     event.preventDefault();
@@ -116,7 +121,7 @@ export default function BatchManagement() {
       <Button type="submit" variant="contained">{t('saveCreate')}</Button>
     </Paper>}
     <Paper><Table><TableHead><TableRow><TableCell>{t('batchNo')}</TableCell><TableCell>{t('chemical')}</TableCell><TableCell>{t('supplier')}</TableCell><TableCell>{t('initialQuantity')}</TableCell><TableCell>{t('stockUnit')}</TableCell><TableCell>{t('expirationDate')}</TableCell></TableRow></TableHead>
-      <TableBody>{batches.map((batch) => <TableRow key={batch.id}><TableCell>{batch.batchNo}</TableCell><TableCell>{batch.chemicalName}</TableCell><TableCell>{batch.supplier || '-'}</TableCell><TableCell>{batch.initialQuantity}</TableCell><TableCell>{batch.unitCount}</TableCell><TableCell>{batch.expirationDate ? new Date(batch.expirationDate).toLocaleDateString() : '-'}</TableCell></TableRow>)}</TableBody>
+      <TableBody>{batches.map((batch) => <TableRow key={batch.id}><TableCell>{batch.batchNo}</TableCell><TableCell>{batch.chemicalName}</TableCell><TableCell>{batch.supplier || '-'}</TableCell><TableCell>{batch.initialQuantity}</TableCell><TableCell>{batch.unitCount}</TableCell><TableCell>{batch.expirationDate ? new Date(batch.expirationDate).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US') : '-'}</TableCell></TableRow>)}</TableBody>
     </Table></Paper>
     <Dialog open={Boolean(labelPreview)} onClose={() => setLabelPreview(null)} maxWidth="sm" fullWidth>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>

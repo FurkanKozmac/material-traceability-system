@@ -1,4 +1,4 @@
-# Malzeme Güvenlik Bilgi Formu (SDS / MSDS)
+# Malzeme Güvenlik Bilgi Formu (GBF / SDS)
 
 ## SL-301 - Industrial Solvent
 

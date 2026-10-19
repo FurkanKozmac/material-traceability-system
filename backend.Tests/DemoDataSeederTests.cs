@@ -104,7 +104,7 @@ public sealed class DemoDataSeederTests
         var hub = CreateHub();
         var service = new UnitService(context, hub.Object, new LowStockChannel());
 
-        var consumed = await service.ConsumeAsync("BAR-DEMO-UNIT-001");
+        var consumed = await service.ConsumeAsync("UNIT-DEMO-UNIT-001");
 
         Assert.Equal("Depleted", consumed.Status);
         Assert.Null(consumed.AddressId);

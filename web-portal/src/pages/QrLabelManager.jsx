@@ -41,7 +41,7 @@ const getStatus = (unit, t) => {
   return { label: unit.status, color: '#92400e', background: '#fef3c7' };
 };
 
-const formatDate = (value) => value ? new Date(value).toLocaleDateString() : '-';
+const formatDate = (value, language) => value ? new Date(value).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US') : '-';
 
 const createLabel = async (value) => {
   const response = await api.get('/labels/preview', { params: { payload: value }, responseType: 'blob' });
@@ -49,7 +49,7 @@ const createLabel = async (value) => {
 };
 
 export default function QrLabelManager() {
-  const { t } = useLanguage();
+  const { t, language } = useLanguage();
   const [batches, setBatches] = useState([]);
   const [selectedBatch, setSelectedBatch] = useState(null);
   const [labels, setLabels] = useState([]);
@@ -133,8 +133,8 @@ export default function QrLabelManager() {
     [t('batchSummaryLabel'), selectedBatch.batchNo],
     [t('chemicalSummaryLabel'), selectedBatch.chemicalName],
     [t('total'), `${activeUnitCount} ${t('labelsCount')}`],
-    [t('expDate'), formatDate(selectedBatch.expirationDate)],
-  ] : [], [selectedBatch, activeUnitCount, t]);
+    [t('expDate'), formatDate(selectedBatch.expirationDate, language)],
+  ] : [], [selectedBatch, activeUnitCount, language, t]);
 
   const toggleLabel = (id) => {
     setSelectedIds((current) => {
@@ -203,7 +203,7 @@ export default function QrLabelManager() {
       <Paper className="batch-label-panel no-print" variant="outlined" sx={{ mb: 2.5, p: 2, borderRadius: 3, borderColor: '#bfdbfe', backgroundColor: '#f8fbff', display: 'flex', alignItems: 'center', gap: 2.5, flexWrap: 'wrap' }}>
         <Box className="batch-print-label" sx={{ width: 360, maxWidth: '100%', p: 2, border: '1.5px solid #0f172a', borderRadius: 2, backgroundColor: '#fff', display: 'grid', gridTemplateColumns: '120px 1fr', gap: 2, alignItems: 'center' }}>
           {batchQrDataUrl && <img src={batchQrDataUrl} alt={`QR BAT-${selectedBatch.batchNo}`} width="120" height="120" />}
-          <Box sx={{ minWidth: 0 }}><Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: '0.08em', color: '#475569' }}>{t('rawMaterialBatch').toUpperCase()}</Typography><Typography sx={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1.1rem', overflowWrap: 'anywhere' }}>BAT-{selectedBatch.batchNo}</Typography><Typography variant="body2" sx={{ mt: 0.5, fontWeight: 700 }}>{selectedBatch.chemicalName}</Typography><Typography variant="caption" display="block">{t('total')}: {activeUnitCount}</Typography><Typography variant="caption" display="block">{t('expDate')}: {formatDate(selectedBatch.expirationDate)}</Typography></Box>
+          <Box sx={{ minWidth: 0 }}><Typography variant="caption" sx={{ fontWeight: 800, letterSpacing: '0.08em', color: '#475569' }}>{t('rawMaterialBatch').toUpperCase()}</Typography><Typography sx={{ fontFamily: 'monospace', fontWeight: 900, fontSize: '1.1rem', overflowWrap: 'anywhere' }}>BAT-{selectedBatch.batchNo}</Typography><Typography variant="body2" sx={{ mt: 0.5, fontWeight: 700 }}>{selectedBatch.chemicalName}</Typography><Typography variant="caption" display="block">{t('total')}: {activeUnitCount}</Typography><Typography variant="caption" display="block">{t('expDate')}: {formatDate(selectedBatch.expirationDate, language)}</Typography></Box>
         </Box>
         <Box sx={{ flex: 1, minWidth: 220 }}><Typography sx={{ fontWeight: 750, color: '#0f172a' }}>{t('batchOpeningLabel')}</Typography><Typography variant="body2" sx={{ color: '#64748b', mt: 0.5, mb: 1.5 }}>{t('batchOpeningLabelDesc')}</Typography><Button variant="outlined" startIcon={<QrCode2 />} onClick={() => print('batch')} disabled={!batchQrDataUrl} sx={{ textTransform: 'none', fontWeight: 700 }}>{t('printBatchLabel')}</Button></Box>
       </Paper>
@@ -223,14 +223,14 @@ export default function QrLabelManager() {
             <TableCell padding="checkbox" onClick={(event) => event.stopPropagation()}><Checkbox checked={selected} onChange={() => toggleLabel(unit.id)} inputProps={{ 'aria-label': `${unit.barcode} ${t('selectLabel')}` }} /></TableCell>
             <TableCell><Typography sx={{ fontFamily: 'monospace', fontWeight: 800, color: '#0f172a' }}>{unit.barcode}</Typography><Typography variant="caption" color="text.secondary">{selectedBatch.chemicalName} · {selectedBatch.batchNo}</Typography></TableCell>
             <TableCell><Chip size="small" label={status.label} sx={{ color: status.color, backgroundColor: status.background, fontWeight: 700 }} /></TableCell>
-            <TableCell sx={{ color: '#475569', whiteSpace: 'nowrap' }}>{formatDate(unit.expirationDate)}</TableCell>
+            <TableCell sx={{ color: '#475569', whiteSpace: 'nowrap' }}>{formatDate(unit.expirationDate, language)}</TableCell>
             <TableCell align="right"><Button size="small" variant="outlined" startIcon={<Visibility />} onClick={(event) => { event.stopPropagation(); setPreviewUnit(unit); }} sx={{ textTransform: 'none', fontWeight: 700 }}>{t('previewQr')}</Button></TableCell>
           </TableRow>; })}</TableBody>
         </Table>
       </TableContainer>}
     </>}
 
-    <Box className="print-sheet">{printLabels.map((unit) => <Box key={unit.id} className="print-label"><img src={unit.qrDataUrl} alt={`QR ${unit.barcode}`} /><Typography sx={{ fontFamily: 'monospace', fontWeight: 800 }}>{unit.barcode}</Typography><Typography>{selectedBatch?.chemicalName}</Typography><Typography>{selectedBatch?.batchNo}</Typography><Typography>{t('expDate')}: {formatDate(unit.expirationDate)}</Typography></Box>)}</Box>
+    <Box className="print-sheet">{printLabels.map((unit) => <Box key={unit.id} className="print-label"><img src={unit.qrDataUrl} alt={`QR ${unit.barcode}`} /><Typography sx={{ fontFamily: 'monospace', fontWeight: 800 }}>{unit.barcode}</Typography><Typography>{selectedBatch?.chemicalName}</Typography><Typography>{selectedBatch?.batchNo}</Typography><Typography>{t('expDate')}: {formatDate(unit.expirationDate, language)}</Typography></Box>)}</Box>
 
     <Dialog open={Boolean(previewUnit)} onClose={() => setPreviewUnit(null)} maxWidth="sm" fullWidth PaperProps={{ sx: { borderRadius: 3 } }}>
       <DialogTitle sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', pb: 1 }}>{t('qrPreview')}<IconButton aria-label={t('close')} onClick={() => setPreviewUnit(null)}><Close /></IconButton></DialogTitle>
@@ -242,7 +242,7 @@ export default function QrLabelManager() {
             <Box><Typography variant="caption" color="text.secondary">{t('chemicalSummaryLabel')}</Typography><Typography fontWeight={700}>{selectedBatch?.chemicalName || '-'}</Typography></Box>
             <Box><Typography variant="caption" color="text.secondary">{t('batchSummaryLabel')}</Typography><Typography fontWeight={700}>{selectedBatch?.batchNo || '-'}</Typography></Box>
             <Box><Typography variant="caption" color="text.secondary">{t('rack')}</Typography><Typography fontWeight={700}>{previewUnit.addressCode || t('notAssigned')}</Typography></Box>
-            <Box><Typography variant="caption" color="text.secondary">{t('expDate')}</Typography><Typography fontWeight={700}>{formatDate(previewUnit.expirationDate)}</Typography></Box>
+            <Box><Typography variant="caption" color="text.secondary">{t('expDate')}</Typography><Typography fontWeight={700}>{formatDate(previewUnit.expirationDate, language)}</Typography></Box>
           </Box>
         </Stack>}
       </DialogContent>

@@ -180,17 +180,17 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
             .FirstOrDefaultAsync(u => u.Barcode == barcode, ct);
 
         if (unit is null)
-            throw new InvalidOperationException($"'{barcode}' barkodlu varil bulunamadı!");
+            throw new InvalidOperationException($"'{barcode}' barkodlu stok birimi bulunamadı!");
 
         if (unit.Status != "InStock" && unit.Status != "AVAILABLE")
-            throw new BusinessRuleException("Yalnızca stokta bulunan bir varil tüketime verilebilir!");
+            throw new BusinessRuleException("Yalnızca stokta bulunan birim tüketime verilebilir!");
 
         if (unit.Batch.ExpirationDate.HasValue && unit.Batch.ExpirationDate.Value < DateTime.UtcNow)
             throw new BusinessRuleException(
                 "DİKKAT: Son kullanma tarihi geçmiş malzeme tüketime verilemez!");
 
         if (unit.Batch.Chemical.Stopped)
-            throw new BusinessRuleException("Durdurulmuş bir kimyasala ait varil tüketime verilemez!");
+            throw new BusinessRuleException("Durdurulmuş bir kimyasala ait stok birimi tüketime verilemez!");
 
         var previousStock = await context.Units.CountAsync(u => u.Batch.ChemicalId == unit.Batch.ChemicalId && (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
 

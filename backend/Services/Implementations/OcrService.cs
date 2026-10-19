@@ -1,13 +1,16 @@
 using System.Net.Http.Headers;
 using System.Net.Http.Json;
-using System.Text;
 using System.Text.Json;
 using backend.Common.Exceptions;
 using backend.Services.Interfaces;
 
 namespace backend.Services.Implementations;
 
-public sealed class OcrService(HttpClient httpClient, IConfiguration configuration, IHostEnvironment environment) : IOcrService
+public sealed class OcrService(
+    HttpClient httpClient,
+    IConfiguration configuration,
+    IHostEnvironment environment,
+    ILogger<OcrService> logger) : IOcrService
 {
     private const string DefaultSampleText = "SUPPLIER: SAMPLE MATERIALS - LOT: DEMO-LOT-001 - EXP: 15.11.2027";
     private const int MaxRawTextLength = 20_000;
@@ -45,10 +48,6 @@ public sealed class OcrService(HttpClient httpClient, IConfiguration configurati
         var imageContent = new StreamContent(image);
         imageContent.Headers.ContentType = MediaTypeHeaderValue.Parse(contentType);
         multipart.Add(imageContent, "file", "label-image");
-        var languages = (configuration["Ocr:Languages"] ?? "eng+tur")
-            .Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        var options = JsonSerializer.Serialize(new { languages, pageSegmentationMethod = 6 }, JsonOptions);
-        multipart.Add(new StringContent(options, Encoding.UTF8, "application/json"), "options");
         request.Content = multipart;
         request.Headers.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
 
@@ -56,13 +55,18 @@ public sealed class OcrService(HttpClient httpClient, IConfiguration configurati
         {
             using var response = await httpClient.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, ct);
             if (!response.IsSuccessStatusCode)
+            {
+                logger.LogWarning("PaddleOCR service returned HTTP {StatusCode}.", (int)response.StatusCode);
                 throw new OcrServiceUnavailableException($"OCR sağlayıcısı HTTP {(int)response.StatusCode} yanıtı verdi.");
+            }
 
-            var result = await response.Content.ReadFromJsonAsync<TesseractServerResponse>(JsonOptions, ct);
-            var rawText = result?.Data?.Stdout ?? result?.Stdout;
-            if (result?.Data?.Exit?.Code is int exitCode && exitCode != 0 ||
-                string.IsNullOrWhiteSpace(rawText))
+            var result = await response.Content.ReadFromJsonAsync<PaddleOcrResponse>(JsonOptions, ct);
+            var rawText = result?.Text;
+            if (string.IsNullOrWhiteSpace(rawText))
+            {
+                logger.LogWarning("PaddleOCR service returned no recognized text.");
                 throw new OcrServiceUnavailableException("OCR sağlayıcısı okunabilir metin döndürmedi.");
+            }
 
             return ValidateText(rawText);
         }
@@ -76,6 +80,7 @@ public sealed class OcrService(HttpClient httpClient, IConfiguration configurati
         }
         catch (Exception ex) when (ex is HttpRequestException or JsonException or TaskCanceledException)
         {
+            logger.LogError(ex, "Could not reach or parse the response from the PaddleOCR service at {Endpoint}.", endpointUri);
             throw new OcrServiceUnavailableException("OCR sağlayıcısına ulaşılamadı veya yanıtı okunamadı.", ex);
         }
     }
@@ -87,7 +92,5 @@ public sealed class OcrService(HttpClient httpClient, IConfiguration configurati
         return rawText;
     }
 
-    private sealed record TesseractServerResponse(TesseractServerResult? Data, string? Stdout);
-    private sealed record TesseractServerResult(TesseractProcessExit? Exit, string? Stdout);
-    private sealed record TesseractProcessExit(int? Code);
+    private sealed record PaddleOcrResponse(string? Text);
 }

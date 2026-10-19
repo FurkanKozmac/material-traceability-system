@@ -64,7 +64,7 @@ public sealed class LabelParserServiceTests
             — s
             W /(o7:TEST-LOT-41
             N
-            P :15.11.2013
+            P :15.11.2027
             )
             ç 'l'—*ı.
             URDERR O DL, e SA A 170 NĞ T W o
@@ -74,7 +74,23 @@ public sealed class LabelParserServiceTests
         var result = await new LabelParserService(database.Context).ParseAsync(rawText);
 
         Assert.Equal("TEST-LOT-41", result.ExtractedLotNumber);
-        Assert.Equal(new DateTime(2013, 11, 15, 0, 0, 0, DateTimeKind.Utc), result.ExtractedExpirationDate);
+        Assert.Equal(new DateTime(2027, 11, 15, 0, 0, 0, DateTimeKind.Utc), result.ExtractedExpirationDate);
+    }
+
+    [Theory]
+    [InlineData("O7TEST-LOT-42", "TEST-LOT-42")]
+    [InlineData("07 TEST-LOT-42", "TEST-LOT-42")]
+    [InlineData("LOT: TEST-LOT-42", "TEST-LOT-42")]
+    [InlineData("L0T: TEST-LOT-42", "TEST-LOT-42")]
+    [InlineData("TEST-LOT-42", "TEST-LOT-42")]
+    public async Task ParseAsync_ExtractsWholeMultiSegmentLotCode(string rawText, string expectedLot)
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+
+        var result = await new LabelParserService(database.Context).ParseAsync(rawText);
+
+        Assert.Equal(expectedLot, result.ExtractedLotNumber);
+        Assert.Equal("BAT-TEST-LOT-42", result.SuggestedBarcodePayload);
     }
 
     [Fact]
@@ -103,5 +119,40 @@ public sealed class LabelParserServiceTests
         var result = await new LabelParserService(database.Context).ParseAsync("POLYMER / STABIL");
 
         Assert.Equal("Polymer Stabilizer", result.SuggestedChemicalName);
+    }
+
+    [Fact]
+    public async Task ParseAsync_DetectsUnlabeledFieldsAndRemovesChemicalAndDateBeforeLotSelection()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        database.Context.Chemicals.Add(new Chemical
+        {
+            Name = "Surface Prep Solvent",
+            ChemicalCode = "SLV",
+            Stopped = false
+        });
+        await database.Context.SaveChangesAsync();
+
+        var result = await new LabelParserService(database.Context)
+            .ParseAsync("Surface Prep Solvent\nSLV-9901-B\n28.10.2028");
+
+        Assert.Equal("Surface Prep Solvent", result.SuggestedChemicalName);
+        Assert.Equal("SLV-9901-B", result.ExtractedLotNumber);
+        Assert.Equal("BAT-SLV-9901-B", result.SuggestedBarcodePayload);
+        Assert.Equal(new DateTime(2028, 10, 28, 0, 0, 0, DateTimeKind.Utc), result.ExtractedExpirationDate);
+    }
+
+    [Theory]
+    [InlineData("nXP:28.10.2028", null)]
+    [InlineData("O7 SLV-9901-B", "SLV-9901-B")]
+    [InlineData("n-SLV-9901-B", "SLV-9901-B")]
+    public async Task ParseAsync_DoesNotPromoteShortNoiseToLot(string rawText, string? expectedLot)
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+
+        var result = await new LabelParserService(database.Context).ParseAsync(rawText);
+
+        Assert.Equal(expectedLot, result.ExtractedLotNumber);
+        Assert.Equal(expectedLot is null ? string.Empty : $"BAT-{expectedLot}", result.SuggestedBarcodePayload);
     }
 }
