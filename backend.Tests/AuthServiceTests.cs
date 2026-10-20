@@ -182,6 +182,181 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task Login_InactiveUser_WithCorrectPassword_ReturnsGenericFailure()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("inactive-login-user", "correct-password");
+        user.Active = false;
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        var act = () => service.LoginAsync(new LoginRequest(user.Username, "correct-password", "DB"));
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("Geçersiz kullanıcı adı veya şifre!", exception.Message);
+        Assert.Empty(context.RefreshTokens);
+    }
+
+    [Fact]
+    public async Task Login_RolelessUser_WithWrongPassword_ReturnsGenericFailure()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("roleless-wrong-password-user", "correct-password", role: null);
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        var act = () => service.LoginAsync(new LoginRequest(user.Username, "wrong-password", "DB"));
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("Geçersiz kullanıcı adı veya şifre!", exception.Message);
+        Assert.Null(exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ChangePassword_UnknownUser_ReturnsGenericFailure()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var service = CreateService(database.Context);
+
+        // Act
+        var act = () => service.ChangePasswordAsync(
+            new ChangePasswordRequest("unknown-change-password-user", "password", "new-password-123"));
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("Geçersiz kullanıcı adı veya parola!", exception.Message);
+        Assert.Null(exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ChangePassword_InactiveUser_ReturnsGenericFailure()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("inactive-change-password-user", "current-password");
+        user.Active = false;
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var originalHash = user.Password;
+        var service = CreateService(context);
+
+        // Act
+        var act = () => service.ChangePasswordAsync(
+            new ChangePasswordRequest(user.Username, "current-password", "new-password-123"));
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("Geçersiz kullanıcı adı veya parola!", exception.Message);
+        Assert.Equal(
+            originalHash,
+            (await context.Users.SingleAsync(item => item.Id == user.Id)).Password);
+    }
+
+    [Fact]
+    public async Task ChangePassword_RolelessUser_ReturnsGenericFailure()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("roleless-change-password-user", "current-password", role: null);
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var originalHash = user.Password;
+        var service = CreateService(context);
+
+        // Act
+        var act = () => service.ChangePasswordAsync(
+            new ChangePasswordRequest(user.Username, "current-password", "new-password-123"));
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("Geçersiz kullanıcı adı veya parola!", exception.Message);
+        Assert.Equal(
+            originalHash,
+            (await context.Users.SingleAsync(item => item.Id == user.Id)).Password);
+    }
+
+    [Fact]
+    public async Task ChangePassword_NewPasswordTooShort_IsRejected()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("short-new-password-user", "current-password");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        var act = () => service.ChangePasswordAsync(
+            new ChangePasswordRequest(user.Username, "current-password", "123456789"));
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("INVALID_PASSWORD", exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ChangePassword_NewPasswordSameAsCurrent_IsRejected()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("same-new-password-user", "current-password");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        var act = () => service.ChangePasswordAsync(
+            new ChangePasswordRequest(user.Username, "current-password", "current-password"));
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("PASSWORD_UNCHANGED", exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task ChangePassword_RepeatedWrongPasswords_TriggerLoginFailureCounter()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("change-password-lockout-user", "current-password");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var failure = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+                service.ChangePasswordAsync(
+                    new ChangePasswordRequest(user.Username, "wrong-password", "new-password-123")));
+            Assert.Equal("Geçersiz kullanıcı adı veya parola!", failure.Message);
+        }
+
+        var lockout = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.ChangePasswordAsync(
+                new ChangePasswordRequest(user.Username, "current-password", "new-password-123")));
+
+        // Assert
+        Assert.Contains("Çok fazla başarısız giriş denemesi", lockout.Message);
+    }
+
+    [Fact]
     public async Task Refresh_AccessToken_RejectsWrongTokenType()
     {
         // Arrange

@@ -1,4 +1,5 @@
 using System.Net;
+using System.Reflection;
 using System.Text;
 using System.Net.Http.Json;
 using backend.Common.Enums;
@@ -11,6 +12,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.RateLimiting;
 using Microsoft.Extensions.Hosting;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.Configuration;
@@ -211,6 +213,17 @@ public sealed class AuthorizationEndpointTests
         Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
         Assert.Equal(HttpStatusCode.NoContent, changePasswordResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, safetyResponse.StatusCode);
+    }
+
+    [Fact]
+    public void ChangePasswordEndpoint_UsesLoginRateLimitPolicy()
+    {
+        var method = typeof(backend.Controllers.AuthController)
+            .GetMethod(nameof(backend.Controllers.AuthController.ChangePassword));
+        var attribute = method?.GetCustomAttribute<EnableRateLimitingAttribute>();
+
+        Assert.NotNull(attribute);
+        Assert.Equal("login", attribute.PolicyName);
     }
 
     [Fact]

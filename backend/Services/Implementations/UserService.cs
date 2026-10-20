@@ -1,5 +1,6 @@
 using System.Data;
 using backend.Common.Exceptions;
+using backend.Common.Security;
 using backend.Data;
 using backend.DTOs;
 using backend.Entities;
@@ -42,9 +43,8 @@ public sealed class UserService(
     {
         ValidateRole(request.Role);
 
-        var username = request.Username?.Trim() ?? string.Empty;
-        if (username.Length == 0)
-            throw new BusinessRuleException("Kullanıcı adı boş olamaz.", "INVALID_USERNAME");
+        var username = UsernamePolicy.NormalizeAndValidate(request.Username);
+        PasswordPolicy.Validate(request.Password);
 
         var user = new User
         {
@@ -129,6 +129,7 @@ public sealed class UserService(
         var user = await LockUserAsync(id, ct)
             ?? throw new NotFoundException("Kullanıcı bulunamadı.");
 
+        PasswordPolicy.Validate(request.NewPassword);
         user.Password = passwordHasher.HashPassword(user, request.NewPassword);
         await RefreshTokenRevocation.RevokeAllActiveAsync(context, user.Id, ct);
         await context.SaveChangesAsync(ct);

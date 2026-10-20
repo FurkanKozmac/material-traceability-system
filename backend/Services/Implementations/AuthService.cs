@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Security.Claims;
 using System.Text;
 using backend.Common.Exceptions;
+using backend.Common.Security;
 using backend.Data;
 using backend.DTOs;
 using backend.Entities;
@@ -36,11 +37,14 @@ public class AuthService(
             throw LoginFailureForRequest("LDAP kimlik doğrulaması henüz yapılandırılmamıştır.");
 
         var user = await GetUserAsync(request.Username, ct);
-        if (user is null || !user.Active)
+        if (user is null)
             throw LoginFailureForRequest("Geçersiz kullanıcı adı veya şifre!");
 
         var verification = VerifyPassword(user, request.Password);
         if (verification == PasswordVerificationResult.Failed)
+            throw LoginFailureForRequest("Geçersiz kullanıcı adı veya şifre!");
+
+        if (!user.Active)
             throw LoginFailureForRequest("Geçersiz kullanıcı adı veya şifre!");
 
         memoryCache.Remove(failureKey);
@@ -102,16 +106,20 @@ public class AuthService(
             accountLockoutEnabled ? LoginFailure(failureKey, message) : new BusinessRuleException(message);
 
         var user = await GetUserAsync(request.Username, ct);
-        if (user is null ||
-            !user.Active ||
-            !string.Equals(user.AuthSource, "DB", StringComparison.OrdinalIgnoreCase))
-        {
+        if (user is null)
             throw ChangePasswordFailure("Geçersiz kullanıcı adı veya parola!");
-        }
 
         if (VerifyPassword(user, request.CurrentPassword) == PasswordVerificationResult.Failed)
             throw ChangePasswordFailure("Geçersiz kullanıcı adı veya parola!");
 
+        if (!user.Active ||
+            !string.Equals(user.AuthSource, "DB", StringComparison.OrdinalIgnoreCase) ||
+            user.Roles.Count == 0)
+        {
+            throw ChangePasswordFailure("Geçersiz kullanıcı adı veya parola!");
+        }
+
+        PasswordPolicy.Validate(request.NewPassword, request.CurrentPassword);
         memoryCache.Remove(failureKey);
 
         await using var transaction = await context.Database.BeginTransactionAsync(ct);

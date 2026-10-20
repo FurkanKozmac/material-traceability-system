@@ -69,6 +69,67 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_ShortPassword_IsRejected()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await EnsureRolesAsync(context);
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.CreateAsync(new CreateUserRequest("short-password-user", "123456789", "Operator")));
+
+        Assert.Equal("INVALID_PASSWORD", exception.ErrorCode);
+        Assert.False(await context.Users.AnyAsync(user => user.Username == "short-password-user"));
+    }
+
+    [Fact]
+    public async Task CreateAsync_TenCharacterPassword_IsAccepted()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await EnsureRolesAsync(context);
+        var service = CreateService(context);
+
+        var response = await service.CreateAsync(
+            new CreateUserRequest("ten-character-user", "1234567890", "Operator"));
+
+        Assert.Equal("ten-character-user", response.Username);
+        var user = await context.Users.SingleAsync(item => item.Username == "ten-character-user");
+        Assert.Equal(
+            PasswordVerificationResult.Success,
+            PasswordHasher.VerifyHashedPassword(user, user.Password, "1234567890"));
+    }
+
+    [Fact]
+    public async Task CreateAsync_UsernameWithInvalidCharacters_IsRejected()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await EnsureRolesAsync(context);
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.CreateAsync(new CreateUserRequest("invalid user!", "new-password-123", "Operator")));
+
+        Assert.Equal("INVALID_USERNAME", exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task CreateAsync_UsernameTooShort_IsRejected()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await EnsureRolesAsync(context);
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.CreateAsync(new CreateUserRequest("ab", "new-password-123", "Operator")));
+
+        Assert.Equal("INVALID_USERNAME", exception.ErrorCode);
+    }
+
+    [Fact]
     public async Task UpdateRoleAsync_AdminToOperator_RevokesActiveTokens()
     {
         await using var database = await SqliteTestDatabase.CreateAsync();
@@ -240,6 +301,24 @@ public class UserServiceTests
             PasswordVerificationResult.Success,
             PasswordHasher.VerifyHashedPassword(updatedUser, updatedUser.Password, "reset-password-123"));
         Assert.NotNull(token.RevokedAt);
+    }
+
+    [Fact]
+    public async Task ResetPasswordAsync_ShortPassword_IsRejected()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await EnsureRolesAsync(context);
+        var user = await AddUserAsync(context, "reset-short-password-user", "Operator");
+        var originalHash = user.Password;
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.ResetPasswordAsync(user.Id, new ResetUserPasswordRequest("123456789")));
+
+        Assert.Equal("INVALID_PASSWORD", exception.ErrorCode);
+        var storedUser = await context.Users.SingleAsync(item => item.Id == user.Id);
+        Assert.Equal(originalHash, storedUser.Password);
     }
 
     [Fact]
