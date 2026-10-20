@@ -164,6 +164,7 @@ builder.Services.AddSingleton<ILowStockChannel, LowStockChannel>();
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));
 builder.Services.AddScoped<IEmailService, MailKitEmailService>();
 builder.Services.AddHostedService<LowStockAlertBackgroundService>();
+builder.Services.AddHostedService<RefreshTokenCleanupBackgroundService>();
 builder.Services.AddScoped<IBarcodeGeneratorStrategy, QrCodeGeneratorStrategy>();
 builder.Services.AddScoped<IBarcodeGeneratorStrategy, Code128GeneratorStrategy>();
 builder.Services.AddScoped<BarcodeGeneratorFactory>();
