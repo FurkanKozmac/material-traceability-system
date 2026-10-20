@@ -151,10 +151,9 @@ public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowSto
         if (task.Unit.AddressId != task.FromAddressId)
             throw new BusinessRuleException("Stok birimi artık görevin kaynak rafında değil. Görev yenilenmelidir!");
 
-        var targetAddress = await context.Addresses
-            .FromSqlInterpolated($"SELECT * FROM addresses WHERE \"Id\" = {task.ToAddressId} FOR UPDATE")
-            .Include(a => a.Units)
-            .SingleOrDefaultAsync(ct);
+        var lockedAddresses = await AddressLockHelper.LockAsync(
+            context, [task.FromAddressId, task.ToAddressId], ct);
+        var targetAddress = lockedAddresses.SingleOrDefault(address => address.Id == task.ToAddressId);
 
         if (targetAddress is null)
             throw new BusinessRuleException("Hedef raf bulunamadı!");
@@ -166,7 +165,10 @@ public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowSto
         if (!string.Equals(targetAddress.StorageType, task.Unit.Batch.Chemical.StorageType, StringComparison.OrdinalIgnoreCase))
             throw new BusinessRuleException("Hedef raf kimyasalın depolama türüyle uyumlu değil!");
 
-        if (targetAddress.Units.Count(u => u.Status == "InStock" || u.Status == "AVAILABLE") >= targetAddress.MaxCapacity)
+        var targetOccupancy = await context.Units.CountAsync(
+            u => u.AddressId == targetAddress.Id &&
+                 (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
+        if (targetOccupancy >= targetAddress.MaxCapacity)
         {
             throw new BusinessRuleException(
                 $"Hedef raf ({targetAddress.Code}) maksimum kapasitesine ulaştığı için taşıma tamamlanamaz!");

@@ -87,9 +87,8 @@ public class BatchService(MtsDbContext context) : IBatchService
                 "INSUFFICIENT_RACK_CAPACITY",
                 new { storageType = chemical.StorageType });
 
-        var lockedAddress = await context.Addresses
-            .FromSqlInterpolated($"SELECT * FROM addresses WHERE \"Id\" = {initialAddress.Id} FOR UPDATE")
-            .SingleAsync(ct);
+        var lockedAddress = (await AddressLockHelper.LockAsync(
+            context, [initialAddress.Id], ct)).Single();
         var currentOccupancy = await context.Units
             .CountAsync(u => u.AddressId == lockedAddress.Id && (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
 

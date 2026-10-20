@@ -109,31 +109,6 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
         if (!batchExists)
             throw new InvalidOperationException("Belirtilen parti (Batch) bulunamadı!");
 
-        if (request.AddressId.HasValue)
-        {
-            var placement = await context.Addresses
-                .Where(a => a.Id == request.AddressId.Value)
-                .Select(a => new
-                {
-                    a.Id,
-                    a.StorageType,
-                    a.MaxCapacity,
-                    Occupancy = a.Units.Count(u => u.Status == "InStock" || u.Status == "AVAILABLE")
-                })
-                .FirstOrDefaultAsync(ct);
-            if (placement is null)
-                throw new InvalidOperationException("Belirtilen raf bulunamadı!");
-
-            var chemicalStorageType = await context.Batches
-                .Where(b => b.Id == request.BatchId)
-                .Select(b => b.Chemical.StorageType)
-                .FirstAsync(ct);
-            if (!string.Equals(placement.StorageType, chemicalStorageType, StringComparison.OrdinalIgnoreCase))
-                throw new BusinessRuleException("Birim, kimyasalın depolama türüyle uyumsuz bir rafa yerleştirilemez.");
-            if (placement.Occupancy >= placement.MaxCapacity)
-                throw new BusinessRuleException("Raf kapasitesi dolu.");
-        }
-
         var unit = new Unit
         {
             Barcode = request.Barcode,
@@ -143,8 +118,35 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
             Version = 1
         };
 
-        context.Units.Add(unit);
-        await context.SaveChangesAsync(ct);
+        if (request.AddressId.HasValue)
+        {
+            await using var transaction = await context.Database.BeginTransactionAsync(ct);
+            var placement = (await AddressLockHelper.LockAsync(
+                context, [request.AddressId.Value], ct)).SingleOrDefault();
+            if (placement is null)
+                throw new InvalidOperationException("Belirtilen raf bulunamadı!");
+
+            var occupancy = await context.Units.CountAsync(
+                u => u.AddressId == placement.Id &&
+                     (u.Status == "InStock" || u.Status == "AVAILABLE"), ct);
+            var chemicalStorageType = await context.Batches
+                .Where(b => b.Id == request.BatchId)
+                .Select(b => b.Chemical.StorageType)
+                .FirstAsync(ct);
+            if (!string.Equals(placement.StorageType, chemicalStorageType, StringComparison.OrdinalIgnoreCase))
+                throw new BusinessRuleException("Birim, kimyasalın depolama türüyle uyumsuz bir rafa yerleştirilemez.");
+            if (occupancy >= placement.MaxCapacity)
+                throw new BusinessRuleException("Raf kapasitesi dolu.");
+
+            context.Units.Add(unit);
+            await context.SaveChangesAsync(ct);
+            await transaction.CommitAsync(ct);
+        }
+        else
+        {
+            context.Units.Add(unit);
+            await context.SaveChangesAsync(ct);
+        }
 
         return (await GetByBarcodeAsync(unit.Barcode, ct))!;
     }
