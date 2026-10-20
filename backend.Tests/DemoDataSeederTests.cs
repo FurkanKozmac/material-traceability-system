@@ -345,6 +345,131 @@ public sealed class DemoDataSeederTests
         Assert.True(BCrypt.Net.BCrypt.Verify("bootstrap-admin-password-123", admin.Password));
     }
 
+    [Fact]
+    public async Task InactiveAdminOnly_SeedRestoresAdminAccount()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        admin.Active = false;
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "restored-admin-password-123"),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var restoredAdmin = await context.Users.Include(user => user.Roles)
+            .SingleAsync(user => user.Username == "admin");
+        Assert.True(restoredAdmin.Active);
+        Assert.Contains(restoredAdmin.Roles, role => role.Name == "Admin");
+        Assert.True(BCrypt.Net.BCrypt.Verify("restored-admin-password-123", restoredAdmin.Password));
+    }
+
+    [Fact]
+    public async Task BootstrapRestore_RevokesActiveTokensAndLogsWarningWithoutPassword()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        admin.Active = false;
+        await context.SaveChangesAsync();
+
+        var activeToken = new RefreshToken
+        {
+            UserId = admin.Id,
+            TokenHash = "active-bootstrap-admin-token",
+            ExpiresAt = DateTime.UtcNow.AddDays(1)
+        };
+        var revokedToken = new RefreshToken
+        {
+            UserId = admin.Id,
+            TokenHash = "revoked-bootstrap-admin-token",
+            ExpiresAt = DateTime.UtcNow.AddDays(1),
+            RevokedAt = DateTime.UtcNow.AddHours(-1)
+        };
+        context.RefreshTokens.AddRange(activeToken, revokedToken);
+        await context.SaveChangesAsync();
+        var previousRevokedAt = revokedToken.RevokedAt;
+
+        var logger = new ListLogger();
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "bootstrap-restored-password-123"),
+            isDevelopment: false,
+            logger);
+
+        context.ChangeTracker.Clear();
+        var updatedActiveToken = await context.RefreshTokens
+            .SingleAsync(token => token.TokenHash == "active-bootstrap-admin-token");
+        var updatedRevokedToken = await context.RefreshTokens
+            .SingleAsync(token => token.TokenHash == "revoked-bootstrap-admin-token");
+
+        Assert.NotNull(updatedActiveToken.RevokedAt);
+        Assert.Equal(previousRevokedAt, updatedRevokedToken.RevokedAt);
+        Assert.Contains(logger.Messages, message =>
+            message.Contains("existing admin account was restored", StringComparison.Ordinal) &&
+            message.Contains("refresh tokens", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Messages, message =>
+            message.Contains("bootstrap-restored-password-123", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task NoActiveAdminAndEmptyAdminPassword_SeedThrows()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        admin.Active = false;
+        await context.SaveChangesAsync();
+
+        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            DbInitializer.SeedAsync(
+                context,
+                Configuration(adminPassword: ""),
+                isDevelopment: false));
+
+        Assert.Contains("ADMIN_PASSWORD", exception.Message);
+    }
+
+    [Fact]
+    public async Task ActiveAdminExists_EmptyAdminPassword_SeedSucceeds()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+        var originalHash = (await context.Users.SingleAsync(user => user.Username == "admin")).Password;
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: ""),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        Assert.True(admin.Active);
+        Assert.Equal(originalHash, admin.Password);
+    }
+
     private static async Task AddAdminAsync(MtsDbContext context, string username)
     {
         var adminRole = await context.Roles.SingleAsync(role => role.Name == "Admin");

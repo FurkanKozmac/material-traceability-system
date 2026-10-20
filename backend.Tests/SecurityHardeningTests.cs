@@ -123,6 +123,30 @@ public sealed class SecurityHardeningTests
         Assert.Contains("ADMIN_PASSWORD", exception.Message);
     }
 
+    [Theory]
+    [InlineData(null)]
+    [InlineData("")]
+    [InlineData("   ")]
+    public void ProductionValidator_AllowsMissingAdminPassword(string? adminPassword)
+    {
+        ProductionConfigurationValidator.Validate(
+            "valid-jwt-secret-that-is-at-least-32-characters-long",
+            adminPassword,
+            "Host=db;Database=mts;Username=mts;Password=long-random-password-value");
+    }
+
+    [Fact]
+    public void ProductionValidator_RejectsShortAdminPassword()
+    {
+        var exception = Assert.Throws<InvalidOperationException>(() =>
+            ProductionConfigurationValidator.Validate(
+                "valid-jwt-secret-that-is-at-least-32-characters-long",
+                "short",
+                "Host=db;Database=mts;Username=mts;Password=long-random-password-value"));
+
+        Assert.Contains("ADMIN_PASSWORD", exception.Message);
+    }
+
     [Fact]
     public void ProductionValidator_RejectsDefaultPostgresPassword()
     {

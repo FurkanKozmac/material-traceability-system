@@ -4,7 +4,8 @@ namespace backend.Common.Security;
 
 public static class PasswordPolicy
 {
-    public const int MinimumLength = 10;
+    public const int MinimumLength = 12;
+    public const int MaximumLength = 128;
 
     public static void Validate(string? newPassword, string? currentPassword = null)
     {
@@ -12,6 +13,13 @@ public static class PasswordPolicy
         {
             throw new BusinessRuleException(
                 $"Parola en az {MinimumLength} karakter olmalıdır.",
+                "INVALID_PASSWORD");
+        }
+
+        if (newPassword.Length > MaximumLength)
+        {
+            throw new BusinessRuleException(
+                $"Parola en fazla {MaximumLength} karakter olmalıdır.",
                 "INVALID_PASSWORD");
         }
 

@@ -6,8 +6,10 @@ public static class ProductionConfigurationValidator
     {
         if (string.IsNullOrWhiteSpace(jwtSecret) || jwtSecret.Length < 32)
             throw new InvalidOperationException("Production startup requires JWT_SECRET with at least 32 characters.");
-        if (string.IsNullOrWhiteSpace(adminPassword) || adminPassword.Length < 12 || adminPassword.Equals("admin123", StringComparison.OrdinalIgnoreCase))
-            throw new InvalidOperationException("Production startup requires ADMIN_PASSWORD with at least 12 non-default characters.");
+        if (!string.IsNullOrWhiteSpace(adminPassword) &&
+            (adminPassword.Length < 12 || adminPassword.Equals("admin123", StringComparison.OrdinalIgnoreCase)))
+            throw new InvalidOperationException(
+                "Production startup requires ADMIN_PASSWORD with at least 12 non-default characters when configured.");
         if (string.IsNullOrWhiteSpace(connectionString))
             throw new InvalidOperationException("Production startup requires ConnectionStrings__DefaultConnection.");
 

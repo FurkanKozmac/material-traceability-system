@@ -17,7 +17,8 @@ public record CreateUserRequest(
      RegularExpression(UsernamePolicy.AllowedCharactersPattern,
          ErrorMessage = UsernamePolicy.AllowedCharactersErrorMessage)]
     string Username,
-    [Required, MinLength(PasswordPolicy.MinimumLength)] string Password,
+    [Required, MinLength(PasswordPolicy.MinimumLength), MaxLength(PasswordPolicy.MaximumLength)]
+    string Password,
     [Required] string Role
 );
 
@@ -26,10 +27,12 @@ public record UpdateUserRoleRequest([Required] string Role);
 public record UpdateUserActiveRequest(bool Active);
 
 public record ResetUserPasswordRequest(
-    [Required, MinLength(PasswordPolicy.MinimumLength)] string NewPassword);
+    [Required, MinLength(PasswordPolicy.MinimumLength), MaxLength(PasswordPolicy.MaximumLength)]
+    string NewPassword);
 
 public record ChangePasswordRequest(
     [Required] string Username,
     [Required] string CurrentPassword,
-    [Required, MinLength(PasswordPolicy.MinimumLength)] string NewPassword
+    [Required, MinLength(PasswordPolicy.MinimumLength), MaxLength(PasswordPolicy.MaximumLength)]
+    string NewPassword
 );

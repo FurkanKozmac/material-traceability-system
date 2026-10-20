@@ -23,6 +23,10 @@ public class AuthService(
     IMemoryCache memoryCache,
     IHttpContextAccessor httpContextAccessor) : IAuthService
 {
+    private static readonly User DummyPasswordUser = new() { Username = "dummy-password-user" };
+    private static readonly string DummyPasswordHash =
+        new PasswordHasher<User>().HashPassword(DummyPasswordUser, "dummy-password-not-used");
+
     public async Task<LoginResponse> LoginAsync(LoginRequest request, CancellationToken ct = default)
     {
         var failureKey = GetLoginFailureKey(request.Username);
@@ -38,7 +42,10 @@ public class AuthService(
 
         var user = await GetUserAsync(request.Username, ct);
         if (user is null)
+        {
+            VerifyDummyPassword(request.Password);
             throw LoginFailureForRequest("Geçersiz kullanıcı adı veya şifre!");
+        }
 
         var verification = VerifyPassword(user, request.Password);
         if (verification == PasswordVerificationResult.Failed)
@@ -107,7 +114,10 @@ public class AuthService(
 
         var user = await GetUserAsync(request.Username, ct);
         if (user is null)
+        {
+            VerifyDummyPassword(request.CurrentPassword);
             throw ChangePasswordFailure("Geçersiz kullanıcı adı veya parola!");
+        }
 
         if (VerifyPassword(user, request.CurrentPassword) == PasswordVerificationResult.Failed)
             throw ChangePasswordFailure("Geçersiz kullanıcı adı veya parola!");
@@ -139,9 +149,15 @@ public class AuthService(
         await context.SaveChangesAsync(ct);
     }
 
-    private Task<User?> GetUserAsync(string username, CancellationToken ct) =>
-        context.Users.Include(u => u.Roles)
-            .FirstOrDefaultAsync(u => u.Username == username, ct);
+    private Task<User?> GetUserAsync(string username, CancellationToken ct)
+    {
+        var usernameLookup = username.Trim().ToLowerInvariant();
+        return context.Users.Include(u => u.Roles)
+            .FirstOrDefaultAsync(u => u.Username.ToLower() == usernameLookup, ct);
+    }
+
+    private void VerifyDummyPassword(string password) =>
+        _ = passwordHasher.VerifyHashedPassword(DummyPasswordUser, DummyPasswordHash, password);
 
     private PasswordVerificationResult VerifyPassword(User user, string password)
     {

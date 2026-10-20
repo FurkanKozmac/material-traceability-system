@@ -44,6 +44,7 @@ public sealed class UserService(
         ValidateRole(request.Role);
 
         var username = UsernamePolicy.NormalizeAndValidate(request.Username);
+        var usernameLookup = username.ToLowerInvariant();
         PasswordPolicy.Validate(request.Password);
 
         var user = new User
@@ -57,7 +58,7 @@ public sealed class UserService(
         await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
         var adminRole = await LockAdminRoleAsync(ct);
 
-        if (await context.Users.AnyAsync(existing => existing.Username == username, ct))
+        if (await context.Users.AnyAsync(existing => existing.Username.ToLower() == usernameLookup, ct))
             throw new BusinessRuleException("Bu kullanıcı adı zaten kullanılıyor.", "USERNAME_ALREADY_EXISTS");
 
         var role = await GetRoleAsync(request.Role, adminRole, ct);

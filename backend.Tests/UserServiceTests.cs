@@ -55,6 +55,22 @@ public class UserServiceTests
     }
 
     [Fact]
+    public async Task CreateAsync_DuplicateUsernameWithDifferentCase_IsRejected()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await EnsureRolesAsync(context);
+        await AddUserAsync(context, "Admin", "Admin");
+        var service = CreateService(context);
+
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.CreateAsync(new CreateUserRequest("admin", "new-password-123", "Operator")));
+
+        Assert.Equal("USERNAME_ALREADY_EXISTS", exception.ErrorCode);
+        Assert.Single(await context.Users.Where(user => user.Username.ToLower() == "admin").ToListAsync());
+    }
+
+    [Fact]
     public async Task CreateAsync_InvalidRole_IsRejected()
     {
         await using var database = await SqliteTestDatabase.CreateAsync();
@@ -77,14 +93,30 @@ public class UserServiceTests
         var service = CreateService(context);
 
         var exception = await Assert.ThrowsAsync<BusinessRuleException>(() =>
-            service.CreateAsync(new CreateUserRequest("short-password-user", "123456789", "Operator")));
+            service.CreateAsync(new CreateUserRequest("short-password-user", "12345678901", "Operator")));
 
         Assert.Equal("INVALID_PASSWORD", exception.ErrorCode);
         Assert.False(await context.Users.AnyAsync(user => user.Username == "short-password-user"));
     }
 
     [Fact]
-    public async Task CreateAsync_TenCharacterPassword_IsAccepted()
+    public async Task CreateAsync_TooLongPassword_IsRejected()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await EnsureRolesAsync(context);
+        var service = CreateService(context);
+        var tooLongPassword = new string('a', 129);
+
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.CreateAsync(new CreateUserRequest("too-long-password-user", tooLongPassword, "Operator")));
+
+        Assert.Equal("INVALID_PASSWORD", exception.ErrorCode);
+        Assert.False(await context.Users.AnyAsync(user => user.Username == "too-long-password-user"));
+    }
+
+    [Fact]
+    public async Task CreateAsync_TwelveCharacterPassword_IsAccepted()
     {
         await using var database = await SqliteTestDatabase.CreateAsync();
         var context = database.Context;
@@ -92,13 +124,13 @@ public class UserServiceTests
         var service = CreateService(context);
 
         var response = await service.CreateAsync(
-            new CreateUserRequest("ten-character-user", "1234567890", "Operator"));
+            new CreateUserRequest("twelve-character-user", "123456789012", "Operator"));
 
-        Assert.Equal("ten-character-user", response.Username);
-        var user = await context.Users.SingleAsync(item => item.Username == "ten-character-user");
+        Assert.Equal("twelve-character-user", response.Username);
+        var user = await context.Users.SingleAsync(item => item.Username == "twelve-character-user");
         Assert.Equal(
             PasswordVerificationResult.Success,
-            PasswordHasher.VerifyHashedPassword(user, user.Password, "1234567890"));
+            PasswordHasher.VerifyHashedPassword(user, user.Password, "123456789012"));
     }
 
     [Fact]
@@ -314,7 +346,7 @@ public class UserServiceTests
         var service = CreateService(context);
 
         var exception = await Assert.ThrowsAsync<BusinessRuleException>(() =>
-            service.ResetPasswordAsync(user.Id, new ResetUserPasswordRequest("123456789")));
+            service.ResetPasswordAsync(user.Id, new ResetUserPasswordRequest("12345678901")));
 
         Assert.Equal("INVALID_PASSWORD", exception.ErrorCode);
         var storedUser = await context.Users.SingleAsync(item => item.Id == user.Id);

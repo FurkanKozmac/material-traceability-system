@@ -53,79 +53,71 @@ public static class DbInitializer
             await context.SaveChangesAsync();
         }
 
-        var hasAdminUser = await context.Users
-            .AnyAsync(user => user.Roles.Any(role => role.Name == "Admin"));
+        var hasActiveAdminUser = await context.Users
+            .AnyAsync(user => user.Active && user.Roles.Any(role => role.Name == "Admin"));
 
         if (adminPasswordReset)
         {
             var configuredAdminPassword = GetRequiredAdminPassword(configuration, isDevelopment);
-            var resetAdmin = await context.Users.Include(user => user.Roles)
-                .FirstOrDefaultAsync(user => user.Username == "admin");
-
-            if (resetAdmin is null)
-            {
-                resetAdmin = new User
-                {
-                    Username = "admin",
-                    Password = BCrypt.Net.BCrypt.HashPassword(configuredAdminPassword),
-                    AuthSource = "DB",
-                    Active = true,
-                    Roles = [adminRole]
-                };
-                context.Users.Add(resetAdmin);
-            }
-            else
-            {
-                resetAdmin.Active = true;
-                resetAdmin.AuthSource = "DB";
-                if (!resetAdmin.Roles.Any(role => role.Name == "Admin"))
-                    resetAdmin.Roles.Add(adminRole);
-                resetAdmin.Password = BCrypt.Net.BCrypt.HashPassword(configuredAdminPassword);
-
-                var activeRefreshTokens = await context.RefreshTokens
-                    .Where(token => token.UserId == resetAdmin.Id && token.RevokedAt == null)
-                    .ToListAsync();
-                foreach (var token in activeRefreshTokens)
-                    token.RevokedAt = DateTime.UtcNow;
-            }
-
+            await CreateOrRestoreAdminAsync(context, adminRole, configuredAdminPassword);
             await context.SaveChangesAsync();
             logger?.LogWarning(
                 "WARNING: ADMIN_PASSWORD_RESET flag is ACTIVE! Admin password has been reset. " +
                 "Please remove this flag from your environment variables immediately.");
         }
-        else if (!hasAdminUser)
+        else if (!hasActiveAdminUser)
         {
             var configuredAdminPassword = GetRequiredAdminPassword(configuration, isDevelopment);
-            var bootstrapAdmin = await context.Users.Include(user => user.Roles)
-                .FirstOrDefaultAsync(user => user.Username == "admin");
-
-            if (bootstrapAdmin is null)
-            {
-                bootstrapAdmin = new User
-                {
-                    Username = "admin",
-                    Password = BCrypt.Net.BCrypt.HashPassword(configuredAdminPassword),
-                    AuthSource = "DB",
-                    Active = true,
-                    Roles = [adminRole]
-                };
-                context.Users.Add(bootstrapAdmin);
-            }
-            else
-            {
-                bootstrapAdmin.Active = true;
-                bootstrapAdmin.AuthSource = "DB";
-                if (!bootstrapAdmin.Roles.Any(role => role.Name == "Admin"))
-                    bootstrapAdmin.Roles.Add(adminRole);
-                bootstrapAdmin.Password = BCrypt.Net.BCrypt.HashPassword(configuredAdminPassword);
-            }
-
+            var restoredExistingAdmin = await CreateOrRestoreAdminAsync(
+                context, adminRole, configuredAdminPassword);
             await context.SaveChangesAsync();
+            if (restoredExistingAdmin)
+            {
+                logger?.LogWarning(
+                    "WARNING: The existing admin account was restored and its password was reset from " +
+                    "ADMIN_PASSWORD. Active refresh tokens for the admin account were revoked.");
+            }
         }
 
         if (demoDataEnabled)
             await DemoDataSeeder.SeedAsync(context);
+    }
+
+    private static async Task<bool> CreateOrRestoreAdminAsync(
+        MtsDbContext context,
+        Role adminRole,
+        string configuredPassword)
+    {
+        var admin = await context.Users.Include(user => user.Roles)
+            .FirstOrDefaultAsync(user => user.Username == "admin");
+
+        if (admin is null)
+        {
+            admin = new User
+            {
+                Username = "admin",
+                Password = BCrypt.Net.BCrypt.HashPassword(configuredPassword),
+                AuthSource = "DB",
+                Active = true,
+                Roles = [adminRole]
+            };
+            context.Users.Add(admin);
+            return false;
+        }
+
+        admin.Active = true;
+        admin.AuthSource = "DB";
+        if (!admin.Roles.Any(role => role.Name == "Admin"))
+            admin.Roles.Add(adminRole);
+        admin.Password = BCrypt.Net.BCrypt.HashPassword(configuredPassword);
+
+        var activeRefreshTokens = await context.RefreshTokens
+            .Where(token => token.UserId == admin.Id && token.RevokedAt == null)
+            .ToListAsync();
+        foreach (var token in activeRefreshTokens)
+            token.RevokedAt = DateTime.UtcNow;
+
+        return true;
     }
 
     private static string GetRequiredAdminPassword(IConfiguration configuration, bool isDevelopment)
@@ -135,7 +127,8 @@ public static class DbInitializer
             configuredPassword = "admin123";
         if (string.IsNullOrWhiteSpace(configuredPassword))
             throw new InvalidOperationException(
-                "ADMIN_PASSWORD must be configured before creating or resetting the administrator account.");
+                "No active Admin account exists and ADMIN_PASSWORD is not configured. " +
+                "Set ADMIN_PASSWORD to create or restore the administrator account.");
         if (!isDevelopment &&
             (configuredPassword.Length < 12 ||
              configuredPassword.Equals("admin123", StringComparison.OrdinalIgnoreCase)))

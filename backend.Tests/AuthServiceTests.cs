@@ -35,6 +35,27 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task Login_UsernameWithDifferentCase_ReturnsTokenPair()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("CaseSensitiveLoginUser", "correct-password");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        var result = await service.LoginAsync(
+            new LoginRequest("casesensitiveloginuser", "correct-password", "DB"));
+
+        // Assert
+        Assert.Equal("CaseSensitiveLoginUser", result.Username);
+        Assert.False(string.IsNullOrWhiteSpace(result.AccessToken));
+        Assert.False(string.IsNullOrWhiteSpace(result.RefreshToken));
+    }
+
+    [Fact]
     public async Task Login_WrongPassword_RejectsCredentials()
     {
         // Arrange
@@ -301,7 +322,7 @@ public class AuthServiceTests
 
         // Act
         var act = () => service.ChangePasswordAsync(
-            new ChangePasswordRequest(user.Username, "current-password", "123456789"));
+            new ChangePasswordRequest(user.Username, "current-password", "12345678901"));
 
         // Assert
         var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
@@ -354,6 +375,46 @@ public class AuthServiceTests
 
         // Assert
         Assert.Contains("Çok fazla başarısız giriş denemesi", lockout.Message);
+    }
+
+    [Fact]
+    public async Task ChangePassword_UnknownUser_RepeatedWrongPasswords_ReturnsSameLockoutMessageAsExistingUser()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        context.Users.Add(CreateUser("existing-change-lockout-user", "current-password"));
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        var existingUserLockout = await TriggerChangePasswordLockoutAsync(
+            service, "existing-change-lockout-user");
+        var unknownUserLockout = await TriggerChangePasswordLockoutAsync(
+            service, "unknown-change-lockout-user");
+
+        // Assert
+        Assert.Contains("Çok fazla başarısız giriş denemesi", unknownUserLockout);
+        Assert.Equal(existingUserLockout, unknownUserLockout);
+    }
+
+    [Fact]
+    public async Task Login_UnknownUser_RepeatedWrongPasswords_ReturnsSameLockoutMessageAsExistingUser()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        context.Users.Add(CreateUser("existing-login-lockout-user", "current-password"));
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        var existingUserLockout = await TriggerLoginLockoutAsync(service, "existing-login-lockout-user");
+        var unknownUserLockout = await TriggerLoginLockoutAsync(service, "unknown-login-lockout-user");
+
+        // Assert
+        Assert.Contains("Çok fazla başarısız giriş denemesi", unknownUserLockout);
+        Assert.Equal(existingUserLockout, unknownUserLockout);
     }
 
     [Fact]
@@ -420,6 +481,36 @@ public class AuthServiceTests
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(login.RefreshToken)));
         var storedToken = context.RefreshTokens.Single(token => token.TokenHash == hash);
         Assert.NotNull(storedToken.RevokedAt);
+    }
+
+    private static async Task<string> TriggerChangePasswordLockoutAsync(AuthService service, string username)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var failure = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+                service.ChangePasswordAsync(
+                    new ChangePasswordRequest(username, "wrong-password", "new-password-123")));
+            Assert.Equal("Geçersiz kullanıcı adı veya parola!", failure.Message);
+        }
+
+        var lockout = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.ChangePasswordAsync(
+                new ChangePasswordRequest(username, "current-password", "new-password-123")));
+        return lockout.Message;
+    }
+
+    private static async Task<string> TriggerLoginLockoutAsync(AuthService service, string username)
+    {
+        for (var attempt = 0; attempt < 5; attempt++)
+        {
+            var failure = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+                service.LoginAsync(new LoginRequest(username, "wrong-password", "DB")));
+            Assert.Equal("Geçersiz kullanıcı adı veya şifre!", failure.Message);
+        }
+
+        var lockout = await Assert.ThrowsAsync<BusinessRuleException>(() =>
+            service.LoginAsync(new LoginRequest(username, "current-password", "DB")));
+        return lockout.Message;
     }
 
     private static User CreateUser(string username, string password, string? role = "Operator")
