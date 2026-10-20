@@ -6,6 +6,7 @@ using backend.Entities;
 using backend.Services.Implementations;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Identity;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Configuration;
 
@@ -19,8 +20,7 @@ public class AuthServiceTests
         // Arrange
         await using var database = await SqliteTestDatabase.CreateAsync();
         var context = database.Context;
-        var user = new User { Username = "valid-user", Active = true };
-        user.Password = PasswordHasher().HashPassword(user, "correct-password");
+        var user = CreateUser("valid-user", "correct-password");
         context.Users.Add(user);
         await context.SaveChangesAsync();
         var service = CreateService(context);
@@ -40,8 +40,7 @@ public class AuthServiceTests
         // Arrange
         await using var database = await SqliteTestDatabase.CreateAsync();
         var context = database.Context;
-        var user = new User { Username = "wrong-password-user", Active = true };
-        user.Password = PasswordHasher().HashPassword(user, "correct-password");
+        var user = CreateUser("wrong-password-user", "correct-password");
         context.Users.Add(user);
         await context.SaveChangesAsync();
         var service = CreateService(context);
@@ -54,13 +53,141 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task Login_UserWithoutRole_IsRejectedWithoutIssuingToken()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("roleless-user", "password", role: null);
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        var act = () => service.LoginAsync(new LoginRequest(user.Username, "password", "DB"));
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("USER_HAS_NO_ROLE", exception.ErrorCode);
+        Assert.Empty(context.RefreshTokens);
+    }
+
+    [Fact]
+    public async Task Login_PlaintextPassword_IsRejected()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = new User
+        {
+            Username = "plaintext-user",
+            Password = "plaintext-password",
+            Active = true,
+            Roles = [new Role { Name = "Operator" }]
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        var act = () => service.LoginAsync(new LoginRequest(user.Username, "plaintext-password", "DB"));
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("Geçersiz kullanıcı adı veya şifre!", exception.Message);
+        Assert.Empty(context.RefreshTokens);
+    }
+
+    [Fact]
+    public async Task ChangePassword_ValidCurrentPassword_UpdatesHashAndRevokesTokens()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("change-password-user", "current-password");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+        var login = await service.LoginAsync(
+            new LoginRequest(user.Username, "current-password", "DB"));
+
+        // Act
+        await service.ChangePasswordAsync(
+            new ChangePasswordRequest(user.Username, "current-password", "new-password-123"));
+
+        // Assert
+        context.ChangeTracker.Clear();
+        var updatedUser = await context.Users.SingleAsync(item => item.Id == user.Id);
+        Assert.StartsWith("AQAAAA", updatedUser.Password);
+        Assert.NotEqual(
+            PasswordVerificationResult.Failed,
+            PasswordHasher().VerifyHashedPassword(updatedUser, updatedUser.Password, "new-password-123"));
+
+        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(login.RefreshToken)));
+        var storedToken = await context.RefreshTokens.SingleAsync(token => token.TokenHash == hash);
+        Assert.NotNull(storedToken.RevokedAt);
+    }
+
+    [Fact]
+    public async Task ChangePassword_WrongCurrentPassword_IsRejectedWithoutChangingHash()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("wrong-current-password-user", "current-password");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var originalHash = user.Password;
+        var service = CreateService(context);
+
+        // Act
+        var act = () => service.ChangePasswordAsync(
+            new ChangePasswordRequest(user.Username, "wrong-password", "new-password-123"));
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("Geçersiz kullanıcı adı veya parola!", exception.Message);
+        var updatedUser = await context.Users.SingleAsync(item => item.Id == user.Id);
+        Assert.Equal(originalHash, updatedUser.Password);
+    }
+
+    [Fact]
+    public async Task ChangePassword_BCryptCurrentPassword_IsAcceptedAndHashUpgraded()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = new User
+        {
+            Username = "bcrypt-change-password-user",
+            Password = BCrypt.Net.BCrypt.HashPassword("current-password"),
+            Active = true,
+            Roles = [new Role { Name = "Operator" }]
+        };
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+
+        // Act
+        await service.ChangePasswordAsync(
+            new ChangePasswordRequest(user.Username, "current-password", "new-password-123"));
+
+        // Assert
+        context.ChangeTracker.Clear();
+        var updatedUser = await context.Users.SingleAsync(item => item.Id == user.Id);
+        Assert.StartsWith("AQAAAA", updatedUser.Password);
+        Assert.NotEqual(
+            PasswordVerificationResult.Failed,
+            PasswordHasher().VerifyHashedPassword(updatedUser, updatedUser.Password, "new-password-123"));
+    }
+
+    [Fact]
     public async Task Refresh_AccessToken_RejectsWrongTokenType()
     {
         // Arrange
         await using var database = await SqliteTestDatabase.CreateAsync();
         var context = database.Context;
-        var user = new User { Username = "access-refresh-user", Active = true };
-        user.Password = PasswordHasher().HashPassword(user, "password");
+        var user = CreateUser("access-refresh-user", "password");
         context.Users.Add(user);
         await context.SaveChangesAsync();
         var service = CreateService(context);
@@ -74,13 +201,38 @@ public class AuthServiceTests
     }
 
     [Fact]
+    public async Task Refresh_UserWithoutRole_IsRejectedWithoutRotatingToken()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("refresh-roleless-user", "password");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+        var login = await service.LoginAsync(new LoginRequest(user.Username, "password", "DB"));
+
+        user.Roles.Clear();
+        await context.SaveChangesAsync();
+
+        // Act
+        var act = () => service.RefreshAsync(login.RefreshToken);
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("USER_HAS_NO_ROLE", exception.ErrorCode);
+        var storedToken = Assert.Single(context.RefreshTokens);
+        Assert.Null(storedToken.RevokedAt);
+        Assert.Null(storedToken.ReplacedByTokenHash);
+    }
+
+    [Fact]
     public async Task Logout_ValidRefreshToken_RevokesStoredToken()
     {
         // Arrange
         await using var database = await SqliteTestDatabase.CreateAsync();
         var context = database.Context;
-        var user = new User { Username = "logout-user", Active = true };
-        user.Password = PasswordHasher().HashPassword(user, "password");
+        var user = CreateUser("logout-user", "password");
         context.Users.Add(user);
         await context.SaveChangesAsync();
         var service = CreateService(context);
@@ -93,6 +245,15 @@ public class AuthServiceTests
         var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(login.RefreshToken)));
         var storedToken = context.RefreshTokens.Single(token => token.TokenHash == hash);
         Assert.NotNull(storedToken.RevokedAt);
+    }
+
+    private static User CreateUser(string username, string password, string? role = "Operator")
+    {
+        var user = new User { Username = username, Active = true };
+        if (role is not null)
+            user.Roles.Add(new Role { Name = role });
+        user.Password = PasswordHasher().HashPassword(user, password);
+        return user;
     }
 
     internal static AuthService CreateService(backend.Data.MtsDbContext context)

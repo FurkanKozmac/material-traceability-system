@@ -45,13 +45,15 @@ public class AuthService(
 
         memoryCache.Remove(failureKey);
 
-        if (verification == PasswordVerificationResult.SuccessRehashNeeded || !IsHashed(user.Password))
+        var roles = GetRequiredRoles(user);
+
+        if (verification == PasswordVerificationResult.SuccessRehashNeeded)
         {
             user.Password = passwordHasher.HashPassword(user, request.Password);
             await context.SaveChangesAsync(ct);
         }
 
-        var issued = CreateTokens(user);
+        var issued = CreateTokens(user, roles);
         context.RefreshTokens.Add(CreateRefreshToken(user.Id, issued.RefreshTokenHash));
         await context.SaveChangesAsync(ct);
         return issued.Response;
@@ -65,6 +67,14 @@ public class AuthService(
             throw new BusinessRuleException("Geçersiz yenileme anahtarı.");
 
         await using var transaction = await context.Database.BeginTransactionAsync(ct);
+
+        var user = await context.Users.Include(u => u.Roles)
+            .FirstOrDefaultAsync(u => u.Id == userId && u.Active, ct);
+        if (user is null)
+            throw new BusinessRuleException("Oturum yenilenemedi.");
+
+        var roles = GetRequiredRoles(user);
+
         var tokenHash = HashToken(refreshToken);
         var storedToken = await context.RefreshTokens
             .FromSqlInterpolated($"SELECT * FROM refresh_tokens WHERE \"TokenHash\" = {tokenHash} FOR UPDATE")
@@ -72,18 +82,43 @@ public class AuthService(
         if (storedToken is null || storedToken.UserId != userId)
             throw new BusinessRuleException("Oturum yenilenemedi.");
 
-        var user = await context.Users.Include(u => u.Roles)
-            .FirstOrDefaultAsync(u => u.Id == userId && u.Active, ct);
-        if (user is null)
-            throw new BusinessRuleException("Oturum yenilenemedi.");
-
-        var issued = CreateTokens(user);
+        var issued = CreateTokens(user, roles);
         storedToken.RevokedAt = DateTime.UtcNow;
         storedToken.ReplacedByTokenHash = issued.RefreshTokenHash;
         context.RefreshTokens.Add(CreateRefreshToken(user.Id, issued.RefreshTokenHash));
         await context.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return issued.Response;
+    }
+
+    public async Task ChangePasswordAsync(ChangePasswordRequest request, CancellationToken ct = default)
+    {
+        var failureKey = GetLoginFailureKey(request.Username);
+        var accountLockoutEnabled = !string.Equals(request.Username, "demo", StringComparison.OrdinalIgnoreCase);
+        if (accountLockoutEnabled)
+            EnsureLoginAllowed(failureKey);
+
+        BusinessRuleException ChangePasswordFailure(string message) =>
+            accountLockoutEnabled ? LoginFailure(failureKey, message) : new BusinessRuleException(message);
+
+        var user = await GetUserAsync(request.Username, ct);
+        if (user is null ||
+            !user.Active ||
+            !string.Equals(user.AuthSource, "DB", StringComparison.OrdinalIgnoreCase))
+        {
+            throw ChangePasswordFailure("Geçersiz kullanıcı adı veya parola!");
+        }
+
+        if (VerifyPassword(user, request.CurrentPassword) == PasswordVerificationResult.Failed)
+            throw ChangePasswordFailure("Geçersiz kullanıcı adı veya parola!");
+
+        memoryCache.Remove(failureKey);
+
+        await using var transaction = await context.Database.BeginTransactionAsync(ct);
+        user.Password = passwordHasher.HashPassword(user, request.NewPassword);
+        await RefreshTokenRevocation.RevokeAllActiveAsync(context, user.Id, ct);
+        await context.SaveChangesAsync(ct);
+        await transaction.CommitAsync(ct);
     }
 
     public async Task RevokeRefreshTokenAsync(string refreshToken, CancellationToken ct = default)
@@ -116,16 +151,22 @@ public class AuthService(
             }
         }
         if (!IsHashed(user.Password))
-            return user.Password == password ? PasswordVerificationResult.SuccessRehashNeeded : PasswordVerificationResult.Failed;
+            return PasswordVerificationResult.Failed;
         return passwordHasher.VerifyHashedPassword(user, user.Password, password);
     }
 
     private static bool IsHashed(string password) => password.StartsWith("AQAAAA", StringComparison.Ordinal);
 
-    private (LoginResponse Response, string RefreshTokenHash) CreateTokens(User user)
+    private static List<string> GetRequiredRoles(User user)
     {
         var roles = user.Roles.Select(r => r.Name).Distinct().ToList();
-        if (roles.Count == 0) roles.Add("Operator");
+        if (roles.Count == 0)
+            throw new BusinessRuleException("Kullanıcıya atanmış bir rol bulunamadı.", "USER_HAS_NO_ROLE");
+        return roles;
+    }
+
+    private (LoginResponse Response, string RefreshTokenHash) CreateTokens(User user, List<string> roles)
+    {
         var accessToken = CreateToken(user, roles, "access", TimeSpan.FromMinutes(GetInt("AccessTokenMinutes", 30)));
         var refreshToken = CreateToken(user, roles, "refresh", TimeSpan.FromDays(GetInt("RefreshTokenDays", 7)));
         var dto = new UserDto(user.Id, user.Username, roles[0], roles);

@@ -36,16 +36,24 @@ public sealed class AuthorizationEndpointTests
     [InlineData("PUT", "/api/settings/barcode-format")]
     [InlineData("PUT", "/api/settings/notifications")]
     [InlineData("POST", "/api/settings/test-alert-email")]
-    public async Task Operator_IsForbidden_FromCreateDeleteAndSettingsEndpoints(string method, string path)
+    [InlineData("GET", "/api/users")]
+    [InlineData("GET", "/api/users/42")]
+    [InlineData("POST", "/api/users")]
+    [InlineData("PUT", "/api/users/42/role")]
+    [InlineData("PUT", "/api/users/42/active")]
+    [InlineData("POST", "/api/users/42/reset-password")]
+    [InlineData("DELETE", "/api/users/42")]
+    public async Task Operator_IsForbidden_FromAdminOnlyEndpoints(string method, string path)
     {
         using var host = CreateHost();
         using var client = host.GetTestClient();
-        using var request = new HttpRequestMessage(new HttpMethod(method), path)
+        using var request = new HttpRequestMessage(new HttpMethod(method), path);
+        if (!string.Equals(method, "GET", StringComparison.OrdinalIgnoreCase))
         {
-            Content = path == "/api/batches/scan-label"
+            request.Content = path == "/api/batches/scan-label"
                 ? CreateMultipartImageContent()
-                : new StringContent("{}", Encoding.UTF8, "application/json")
-        };
+                : new StringContent("{}", Encoding.UTF8, "application/json");
+        }
         request.Headers.Add("X-Test-Roles", "Operator");
 
         using var response = await client.SendAsync(request);
@@ -169,7 +177,20 @@ public sealed class AuthorizationEndpointTests
     }
 
     [Fact]
-    public async Task AnonymousEndpoints_WithoutToken_ReturnOk()
+    public async Task AuthenticatedUserWithoutRole_IsForbidden_OnUserManagementEndpoint()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/users");
+        request.Headers.Add("X-Test-Authenticated", "true");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnonymousEndpoints_WithoutToken_ReturnSuccess()
     {
         using var host = CreateHost();
         using var client = host.GetTestClient();
@@ -179,13 +200,30 @@ public sealed class AuthorizationEndpointTests
             "/api/auth/login", new LoginRequest("demo", "demo123", "DB"));
         using var refreshResponse = await client.PostAsJsonAsync(
             "/api/auth/refresh", new RefreshTokenRequest("refresh-token"));
+        using var changePasswordResponse = await client.PostAsJsonAsync(
+            "/api/auth/change-password",
+            new ChangePasswordRequest("demo", "demo123", "new-demo-password"));
         using var safetyResponse = await client.PostAsJsonAsync(
             "/api/safetyassistant/ask", new SafetyQuestionRequest("CHEM-1", "How should it be stored?"));
 
         Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.NoContent, changePasswordResponse.StatusCode);
         Assert.Equal(HttpStatusCode.OK, safetyResponse.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_CanListUsers()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/users");
+        request.Headers.Add("X-Test-Roles", "Admin");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
     }
 
     [Fact]
@@ -199,22 +237,6 @@ public sealed class AuthorizationEndpointTests
         using var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.NoContent, response.StatusCode);
-    }
-
-    [Fact]
-    public async Task UserManagementRoute_IsNotExposed()
-    {
-        using var host = CreateHost();
-        using var client = host.GetTestClient();
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/users")
-        {
-            Content = new StringContent("{}", Encoding.UTF8, "application/json")
-        };
-        request.Headers.Add("X-Test-Roles", "Operator");
-
-        using var response = await client.SendAsync(request);
-
-        Assert.Equal(HttpStatusCode.NotFound, response.StatusCode);
     }
 
     [Fact]
@@ -277,6 +299,12 @@ public sealed class AuthorizationEndpointTests
             .ReturnsAsync(loginResponse);
         auth.Setup(service => service.RefreshAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(loginResponse);
+        auth.Setup(service => service.ChangePasswordAsync(
+                It.IsAny<ChangePasswordRequest>(), It.IsAny<CancellationToken>()))
+            .Returns(Task.CompletedTask);
+        var users = new Mock<IUserService>();
+        users.Setup(service => service.GetAllAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([]);
         var rag = new Mock<IMsdsRagService>();
         rag.Setup(service => service.AskQuestionAsync(
                 It.IsAny<SafetyQuestionRequest>(), It.IsAny<CancellationToken>()))
@@ -314,6 +342,7 @@ public sealed class AuthorizationEndpointTests
                 services.AddSingleton(ocr.Object);
                 services.AddSingleton(labelParser.Object);
                 services.AddSingleton(auth.Object);
+                services.AddSingleton(users.Object);
                 services.AddSingleton(rag.Object);
             })
             .Configure(app =>

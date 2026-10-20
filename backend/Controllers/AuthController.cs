@@ -27,6 +27,16 @@ public class AuthController(IAuthService authService) : ControllerBase
         RefreshTokenRequest request, CancellationToken ct) =>
         Ok(await authService.RefreshAsync(request.RefreshToken, ct));
 
+    [HttpPost("change-password")]
+    [AllowAnonymous]
+    [EnableRateLimiting("login")]
+    public async Task<IActionResult> ChangePassword(
+        [FromBody] ChangePasswordRequest request, CancellationToken ct)
+    {
+        await authService.ChangePasswordAsync(request, ct);
+        return NoContent();
+    }
+
     [HttpPost("logout")]
     [AllowAnonymous]
     public async Task<IActionResult> Logout(LogoutRequest request, CancellationToken ct)
