@@ -146,6 +146,7 @@ builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
 builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()
+        .RequireRole("Admin", "Operator")
         .Build());
 builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 

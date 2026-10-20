@@ -156,6 +156,39 @@ public sealed class AuthorizationEndpointTests
     }
 
     [Fact]
+    public async Task AuthenticatedUserWithoutRole_IsForbidden_OnStandardGetEndpoint()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/chemicals");
+        request.Headers.Add("X-Test-Authenticated", "true");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task AnonymousEndpoints_WithoutToken_ReturnOk()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+
+        using var healthResponse = await client.GetAsync("/api/health");
+        using var loginResponse = await client.PostAsJsonAsync(
+            "/api/auth/login", new LoginRequest("demo", "demo123", "DB"));
+        using var refreshResponse = await client.PostAsJsonAsync(
+            "/api/auth/refresh", new RefreshTokenRequest("refresh-token"));
+        using var safetyResponse = await client.PostAsJsonAsync(
+            "/api/safetyassistant/ask", new SafetyQuestionRequest("CHEM-1", "How should it be stored?"));
+
+        Assert.Equal(HttpStatusCode.OK, healthResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, loginResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, refreshResponse.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, safetyResponse.StatusCode);
+    }
+
+    [Fact]
     public async Task Admin_CanDeleteChemical()
     {
         using var host = CreateHost();
@@ -236,6 +269,19 @@ public sealed class AuthorizationEndpointTests
         batches.Setup(service => service.CreateAsync(It.IsAny<CreateBatchRequest>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new BatchResponse(42, "LOT-RECEIVED-42", "Fictional Supplier", 4,
                 new DateTime(2027, 11, 15, 0, 0, 0, DateTimeKind.Utc), 1, "Sodium Hydroxide", 4));
+        var loginResponse = new LoginResponse(
+            "access-token", "access-token", "refresh-token", "demo", "Operator",
+            ["Operator"], new UserDto(1, "demo", "Operator", ["Operator"]));
+        var auth = new Mock<IAuthService>();
+        auth.Setup(service => service.LoginAsync(It.IsAny<LoginRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(loginResponse);
+        auth.Setup(service => service.RefreshAsync(It.IsAny<string>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(loginResponse);
+        var rag = new Mock<IMsdsRagService>();
+        rag.Setup(service => service.AskQuestionAsync(
+                It.IsAny<SafetyQuestionRequest>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new SafetyAnswerResponse(
+                "CHEM-1", "How should it be stored?", "Store it safely.", "Storage", true));
 
         return new HostBuilder()
             .ConfigureWebHost(webHost => webHost
@@ -249,6 +295,7 @@ public sealed class AuthorizationEndpointTests
                 {
                     options.FallbackPolicy = new AuthorizationPolicyBuilder("Test")
                         .RequireAuthenticatedUser()
+                        .RequireRole("Admin", "Operator")
                         .Build();
                 });
                 // BatchesController broadcasts inventory changes after creation.
@@ -266,6 +313,8 @@ public sealed class AuthorizationEndpointTests
                 services.AddSingleton(batches.Object);
                 services.AddSingleton(ocr.Object);
                 services.AddSingleton(labelParser.Object);
+                services.AddSingleton(auth.Object);
+                services.AddSingleton(rag.Object);
             })
             .Configure(app =>
             {
@@ -285,7 +334,11 @@ public sealed class AuthorizationEndpointTests
         protected override Task<AuthenticateResult> HandleAuthenticateAsync()
         {
             var rolesHeader = Request.Headers["X-Test-Roles"].ToString();
-            if (string.IsNullOrWhiteSpace(rolesHeader))
+            var authenticatedWithoutRoles = string.Equals(
+                Request.Headers["X-Test-Authenticated"].ToString(),
+                "true",
+                StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(rolesHeader) && !authenticatedWithoutRoles)
                 return Task.FromResult(AuthenticateResult.NoResult());
 
             var claims = new List<Claim>
