@@ -206,6 +206,7 @@ public class UserServiceTests
         var revokedToken = await AddRefreshTokenAsync(
             context, admin.Id, "revoked-admin-token", DateTime.UtcNow.AddHours(-1));
         var previousRevokedAt = revokedToken.RevokedAt;
+        var originalSecurityStamp = admin.SecurityStamp;
         var service = CreateService(context);
 
         var response = await service.UpdateRoleAsync(
@@ -215,6 +216,7 @@ public class UserServiceTests
         var updatedAdmin = await context.Users
             .Include(user => user.Roles)
             .SingleAsync(user => user.Id == admin.Id);
+        Assert.NotEqual(originalSecurityStamp, updatedAdmin.SecurityStamp);
         var updatedRoles = updatedAdmin.Roles.Select(role => role.Name).ToList();
         Assert.Single(updatedRoles);
         Assert.Equal("Operator", updatedRoles[0]);
@@ -252,11 +254,13 @@ public class UserServiceTests
         await AddUserAsync(context, "existing-admin", "Admin");
         var user = await AddUserAsync(context, "operator-user", "Operator");
         var token = await AddRefreshTokenAsync(context, user.Id, "operator-token");
+        var originalSecurityStamp = user.SecurityStamp;
         var service = CreateService(context);
 
         var response = await service.UpdateRoleAsync(user.Id, new UpdateUserRoleRequest("Admin"));
 
         Assert.Equal("Admin", response.Role);
+        Assert.NotEqual(originalSecurityStamp, user.SecurityStamp);
         Assert.Null(token.RevokedAt);
     }
 
@@ -269,12 +273,14 @@ public class UserServiceTests
         var admin = await AddUserAsync(context, "admin-to-deactivate", "Admin");
         var actor = await AddUserAsync(context, "acting-admin", "Admin");
         var token = await AddRefreshTokenAsync(context, admin.Id, "deactivate-token");
+        var originalSecurityStamp = admin.SecurityStamp;
         var service = CreateService(context);
 
         var response = await service.UpdateActiveAsync(
             admin.Id, new UpdateUserActiveRequest(false), actor.Id);
 
         Assert.False(response.Active);
+        Assert.NotEqual(originalSecurityStamp, admin.SecurityStamp);
         Assert.NotNull(token.RevokedAt);
     }
 
@@ -355,6 +361,7 @@ public class UserServiceTests
         await EnsureRolesAsync(context);
         var user = await AddUserAsync(context, "reset-password-user", "Operator");
         var token = await AddRefreshTokenAsync(context, user.Id, "reset-password-token");
+        var originalSecurityStamp = user.SecurityStamp;
         var service = CreateService(context);
 
         await service.ResetPasswordAsync(
@@ -362,6 +369,7 @@ public class UserServiceTests
 
         var updatedUser = await context.Users.SingleAsync(item => item.Id == user.Id);
         Assert.StartsWith("AQAAAA", updatedUser.Password);
+        Assert.NotEqual(originalSecurityStamp, updatedUser.SecurityStamp);
         Assert.Equal(
             PasswordVerificationResult.Success,
             PasswordHasher.VerifyHashedPassword(updatedUser, updatedUser.Password, "reset-password-123"));

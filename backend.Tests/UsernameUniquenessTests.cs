@@ -80,7 +80,10 @@ public class UsernameUniquenessTests(PostgresTestDatabase database)
             await using var context = new MtsDbContext(options);
 
             var migrations = context.Database.GetMigrations().ToList();
-            await context.GetService<IMigrator>().MigrateAsync(migrations[^2]);
+            var uniqueIndexMigration = migrations.Single(migration =>
+                migration.EndsWith("_LowercaseUsernameUniqueIndex", StringComparison.Ordinal));
+            var previousMigration = migrations[migrations.IndexOf(uniqueIndexMigration) - 1];
+            await context.GetService<IMigrator>().MigrateAsync(previousMigration);
 
             var suffix = Guid.NewGuid().ToString("N");
             var firstUsername = $"CaseConflict-{suffix}";
@@ -92,7 +95,7 @@ public class UsernameUniquenessTests(PostgresTestDatabase database)
                 $"INSERT INTO users (\"Username\", \"Password\", auth_source, active) VALUES ({secondUsername}, {password}, 'DB', true)");
 
             var exception = await Assert.ThrowsAnyAsync<Exception>(() =>
-                context.GetService<IMigrator>().MigrateAsync(migrations[^1]));
+                context.GetService<IMigrator>().MigrateAsync(uniqueIndexMigration));
 
             Assert.Contains("case-insensitive username conflicts", exception.Message);
         }

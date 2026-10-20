@@ -101,6 +101,7 @@ public sealed class UserService(
 
         user.Roles.Clear();
         user.Roles.Add(role);
+        SecurityStampHelper.Rotate(user);
         await context.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
         return Map(user);
@@ -123,6 +124,7 @@ public sealed class UserService(
             if (user.Roles.Any(role => role.Name == AdminRoleName))
                 await EnsureAnotherActiveAdminAsync(user.Id, ct);
             await RefreshTokenRevocation.RevokeAllActiveAsync(context, user.Id, ct);
+            SecurityStampHelper.Rotate(user);
         }
 
         user.Active = request.Active;
@@ -141,6 +143,7 @@ public sealed class UserService(
 
         PasswordPolicy.Validate(request.NewPassword);
         user.Password = passwordHasher.HashPassword(user, request.NewPassword);
+        SecurityStampHelper.Rotate(user);
         await RefreshTokenRevocation.RevokeAllActiveAsync(context, user.Id, ct);
         await context.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);

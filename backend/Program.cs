@@ -104,45 +104,7 @@ builder.Services.AddHttpClient<IOcrService, OcrService>(client =>
 builder.Services.AddScoped<ILabelParserService, LabelParserService>();
 builder.Services.AddSignalR();
 
-var jwtKey = builder.Configuration["Jwt:Key"]
-    ?? throw new InvalidOperationException("Jwt:Key yapılandırılmalıdır.");
-builder.Services.AddAuthentication(JwtBearerDefaults.AuthenticationScheme)
-    .AddJwtBearer(options =>
-    {
-        options.TokenValidationParameters = new TokenValidationParameters
-        {
-            ValidateIssuer = true,
-            ValidIssuer = builder.Configuration["Jwt:Issuer"],
-            ValidateAudience = true,
-            ValidAudience = builder.Configuration["Jwt:Audience"],
-            ValidateIssuerSigningKey = true,
-            IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtKey)),
-            ValidateLifetime = true,
-            ClockSkew = TimeSpan.FromSeconds(30)
-        };
-        options.Events = new JwtBearerEvents
-        {
-            OnMessageReceived = context =>
-            {
-                var accessToken = context.Request.Query["access_token"];
-                var requestPath = context.HttpContext.Request.Path;
-
-                if (!string.IsNullOrEmpty(accessToken) &&
-                    requestPath.StartsWithSegments("/hubs/traceability"))
-                {
-                    context.Token = accessToken;
-                }
-
-                return Task.CompletedTask;
-            },
-            OnTokenValidated = context =>
-            {
-                if (context.Principal?.FindFirst("token_type")?.Value != "access")
-                    context.Fail("Bu uç için access token gereklidir.");
-                return Task.CompletedTask;
-            }
-        };
-    });
+builder.Services.AddMtsAuthentication(builder.Configuration);
 builder.Services.AddAuthorizationBuilder()
     .SetFallbackPolicy(new AuthorizationPolicyBuilder()
         .RequireAuthenticatedUser()

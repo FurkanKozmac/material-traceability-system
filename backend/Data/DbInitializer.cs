@@ -1,3 +1,4 @@
+using backend.Common.Security;
 using backend.Entities;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Logging;
@@ -30,6 +31,14 @@ public static class DbInitializer
             context.Roles.Add(operatorRole);
         }
         await context.SaveChangesAsync();
+
+        var usersWithoutSecurityStamp = await context.Users
+            .Where(user => user.SecurityStamp == string.Empty)
+            .ToListAsync();
+        foreach (var user in usersWithoutSecurityStamp)
+            SecurityStampHelper.Rotate(user);
+        if (usersWithoutSecurityStamp.Count > 0)
+            await context.SaveChangesAsync();
 
         var demoUser = await context.Users.Include(user => user.Roles)
             .FirstOrDefaultAsync(user => user.Username.ToLower() == "demo");
@@ -110,6 +119,7 @@ public static class DbInitializer
         if (!admin.Roles.Any(role => role.Name == "Admin"))
             admin.Roles.Add(adminRole);
         admin.Password = BCrypt.Net.BCrypt.HashPassword(configuredPassword);
+        SecurityStampHelper.Rotate(admin);
 
         var activeRefreshTokens = await context.RefreshTokens
             .Where(token => token.UserId == admin.Id && token.RevokedAt == null)

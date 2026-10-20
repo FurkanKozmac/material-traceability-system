@@ -131,6 +131,7 @@ public class AuthServiceTests
         var service = CreateService(context);
         var login = await service.LoginAsync(
             new LoginRequest(user.Username, "current-password", "DB"));
+        var originalSecurityStamp = user.SecurityStamp;
 
         // Act
         await service.ChangePasswordAsync(
@@ -140,6 +141,7 @@ public class AuthServiceTests
         context.ChangeTracker.Clear();
         var updatedUser = await context.Users.SingleAsync(item => item.Id == user.Id);
         Assert.StartsWith("AQAAAA", updatedUser.Password);
+        Assert.NotEqual(originalSecurityStamp, updatedUser.SecurityStamp);
         Assert.NotEqual(
             PasswordVerificationResult.Failed,
             PasswordHasher().VerifyHashedPassword(updatedUser, updatedUser.Password, "new-password-123"));
@@ -477,6 +479,29 @@ public class AuthServiceTests
         // Assert
         Assert.Contains("Çok fazla başarısız giriş denemesi", unknownUserLockout);
         Assert.Equal(existingUserLockout, unknownUserLockout);
+    }
+
+    [Fact]
+    public async Task Refresh_StaleSecurityStamp_IsRejected()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var user = CreateUser("stale-refresh-stamp-user", "correct-password");
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+        var service = CreateService(context);
+        var login = await service.LoginAsync(
+            new LoginRequest(user.Username, "correct-password", "DB"));
+
+        user.SecurityStamp = Guid.NewGuid().ToString("N");
+        await context.SaveChangesAsync();
+
+        // Act
+        var act = () => service.RefreshAsync(login.RefreshToken);
+
+        // Assert
+        await Assert.ThrowsAsync<BusinessRuleException>(act);
     }
 
     [Fact]

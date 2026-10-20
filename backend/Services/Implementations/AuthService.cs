@@ -84,6 +84,10 @@ public class AuthService(
         if (user is null)
             throw new BusinessRuleException("Oturum yenilenemedi.");
 
+        if (string.IsNullOrWhiteSpace(user.SecurityStamp) ||
+            !string.Equals(principal.FindFirstValue("sstamp"), user.SecurityStamp, StringComparison.Ordinal))
+            throw new BusinessRuleException("Oturum yenilenemedi.");
+
         var roles = GetRequiredRoles(user);
 
         var tokenHash = HashToken(refreshToken);
@@ -134,6 +138,7 @@ public class AuthService(
 
         await using var transaction = await context.Database.BeginTransactionAsync(ct);
         user.Password = passwordHasher.HashPassword(user, request.NewPassword);
+        SecurityStampHelper.Rotate(user);
         await RefreshTokenRevocation.RevokeAllActiveAsync(context, user.Id, ct);
         await context.SaveChangesAsync(ct);
         await transaction.CommitAsync(ct);
@@ -232,7 +237,8 @@ public class AuthService(
         {
             new(ClaimTypes.NameIdentifier, user.Id.ToString()),
             new(ClaimTypes.Name, user.Username),
-            new("token_type", tokenType)
+            new("token_type", tokenType),
+            new("sstamp", user.SecurityStamp)
         };
         claims.AddRange(roles.Select(role => new Claim(ClaimTypes.Role, role)));
 

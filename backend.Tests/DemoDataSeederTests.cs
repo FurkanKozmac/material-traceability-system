@@ -179,6 +179,7 @@ public sealed class DemoDataSeederTests
             isDevelopment: false);
 
         var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        var originalSecurityStamp = admin.SecurityStamp;
         var activeToken = new RefreshToken
         {
             UserId = admin.Id,
@@ -212,6 +213,7 @@ public sealed class DemoDataSeederTests
 
         Assert.True(BCrypt.Net.BCrypt.Verify("new-admin-password", updatedAdmin.Password));
         Assert.False(BCrypt.Net.BCrypt.Verify("old-admin-password", updatedAdmin.Password));
+        Assert.NotEqual(originalSecurityStamp, updatedAdmin.SecurityStamp);
         Assert.NotNull(updatedActiveToken.RevokedAt);
         Assert.Equal(previousRevokedAt, updatedRevokedToken.RevokedAt);
         Assert.Contains(logger.Messages, message =>
@@ -379,6 +381,39 @@ public sealed class DemoDataSeederTests
     }
 
     [Fact]
+    public async Task Seed_AssignsSecurityStampToExistingUsersWithEmptyStamp()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        admin.SecurityStamp = string.Empty;
+        var legacyUser = new User
+        {
+            Username = "legacy-empty-stamp-user",
+            Password = "not-used-in-this-test",
+            SecurityStamp = string.Empty
+        };
+        context.Users.Add(legacyUser);
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var users = await context.Users
+            .Where(user => user.Username == "admin" || user.Username == "legacy-empty-stamp-user")
+            .ToListAsync();
+        Assert.All(users, user => Assert.False(string.IsNullOrWhiteSpace(user.SecurityStamp)));
+    }
+
+    [Fact]
     public async Task InactiveAdminOnly_SeedRestoresAdminAccount()
     {
         await using var database = await SqliteTestDatabase.CreateAsync();
@@ -389,6 +424,7 @@ public sealed class DemoDataSeederTests
             isDevelopment: false);
 
         var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        var originalSecurityStamp = admin.SecurityStamp;
         admin.Active = false;
         await context.SaveChangesAsync();
 
@@ -401,6 +437,7 @@ public sealed class DemoDataSeederTests
         var restoredAdmin = await context.Users.Include(user => user.Roles)
             .SingleAsync(user => user.Username == "admin");
         Assert.True(restoredAdmin.Active);
+        Assert.NotEqual(originalSecurityStamp, restoredAdmin.SecurityStamp);
         Assert.Contains(restoredAdmin.Roles, role => role.Name == "Admin");
         Assert.True(BCrypt.Net.BCrypt.Verify("restored-admin-password-123", restoredAdmin.Password));
     }
@@ -416,6 +453,7 @@ public sealed class DemoDataSeederTests
             isDevelopment: false);
 
         var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        var originalSecurityStamp = admin.SecurityStamp;
         admin.Active = false;
         await context.SaveChangesAsync();
 
@@ -451,6 +489,8 @@ public sealed class DemoDataSeederTests
 
         Assert.NotNull(updatedActiveToken.RevokedAt);
         Assert.Equal(previousRevokedAt, updatedRevokedToken.RevokedAt);
+        var restoredAdmin = await context.Users.SingleAsync(user => user.Username == "admin");
+        Assert.NotEqual(originalSecurityStamp, restoredAdmin.SecurityStamp);
         Assert.Contains(logger.Messages, message =>
             message.Contains("existing admin account was restored", StringComparison.Ordinal) &&
             message.Contains("refresh tokens", StringComparison.Ordinal));

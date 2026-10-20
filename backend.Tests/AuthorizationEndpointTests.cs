@@ -3,6 +3,7 @@ using System.Reflection;
 using System.Text;
 using System.Net.Http.Json;
 using backend.Common.Enums;
+using backend.Common.Security;
 using backend.Data;
 using backend.DTOs;
 using backend.Entities;
@@ -271,6 +272,14 @@ public sealed class AuthorizationEndpointTests
         Assert.DoesNotContain("Admin", login.Roles);
     }
 
+    private static IConfiguration TestAuthenticationConfiguration() =>
+        new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Jwt:Key"] = "test-signing-key-at-least-thirty-two-bytes-long",
+            ["Jwt:Issuer"] = "backend-tests",
+            ["Jwt:Audience"] = "backend-tests"
+        }).Build();
+
     private static IHost CreateHost()
     {
         var chemical = new Mock<IChemicalService>();
@@ -330,6 +339,7 @@ public sealed class AuthorizationEndpointTests
             .ConfigureServices(services =>
             {
                 services.AddRouting();
+                services.AddMtsAuthentication(TestAuthenticationConfiguration());
                 services.AddAuthentication("Test")
                     .AddScheme<AuthenticationSchemeOptions, TestRoleAuthenticationHandler>("Test", _ => { });
                 services.AddAuthorization(options =>

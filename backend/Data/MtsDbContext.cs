@@ -35,6 +35,7 @@ public class MtsDbContext(DbContextOptions<MtsDbContext> options) : DbContext(op
             e.HasIndex(u => u.Username).IsUnique();
             e.Property(u => u.Username).IsRequired().HasMaxLength(100);
             e.Property(u => u.Password).IsRequired().HasMaxLength(255);
+            e.Property(u => u.SecurityStamp).IsRequired().HasMaxLength(64).HasDefaultValue(string.Empty);
             e.Property(u => u.AuthSource).HasColumnName("auth_source").HasMaxLength(20);
             e.Property(u => u.Active).HasColumnName("active").HasDefaultValue(true);
 
