@@ -24,6 +24,10 @@
     </ItemGroup>
 
     <ItemGroup>
+      <InternalsVisibleTo Include="backend.Tests" />
+    </ItemGroup>
+
+    <ItemGroup>
       <Folder Include="Common\Enums\" />
       <Folder Include="Common\Exceptions\" />
       <Folder Include="Entities\" />

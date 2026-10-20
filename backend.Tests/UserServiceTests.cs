@@ -5,6 +5,7 @@ using backend.Entities;
 using backend.Services.Implementations;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace backend.Tests;
 
@@ -68,6 +69,38 @@ public class UserServiceTests
 
         Assert.Equal("USERNAME_ALREADY_EXISTS", exception.ErrorCode);
         Assert.Single(await context.Users.Where(user => user.Username.ToLower() == "admin").ToListAsync());
+    }
+
+    [Theory]
+    [InlineData("ux_users_username_lower")]
+    [InlineData("IX_users_Username")]
+    public void IsUsernameUniqueViolation_UsernameConstraint_ReturnsTrue(string constraintName)
+    {
+        var exception = new DbUpdateException(
+            "duplicate",
+            new PostgresException(
+                "duplicate key value violates unique constraint",
+                "ERROR",
+                "ERROR",
+                PostgresErrorCodes.UniqueViolation,
+                constraintName: constraintName));
+
+        Assert.True(UserService.IsUsernameUniqueViolation(exception));
+    }
+
+    [Fact]
+    public void IsUsernameUniqueViolation_OtherConstraint_ReturnsFalse()
+    {
+        var exception = new DbUpdateException(
+            "duplicate",
+            new PostgresException(
+                "duplicate key value violates unique constraint",
+                "ERROR",
+                "ERROR",
+                PostgresErrorCodes.UniqueViolation,
+                constraintName: "IX_refresh_tokens_TokenHash"));
+
+        Assert.False(UserService.IsUsernameUniqueViolation(exception));
     }
 
     [Fact]

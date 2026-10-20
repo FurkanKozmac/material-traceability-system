@@ -69,7 +69,7 @@ public sealed class UserService(
         {
             await context.SaveChangesAsync(ct);
         }
-        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        catch (DbUpdateException ex) when (IsUsernameUniqueViolation(ex))
         {
             throw new BusinessRuleException(
                 "Bu kullanıcı adı zaten kullanılıyor.", "USERNAME_ALREADY_EXISTS");
@@ -215,9 +215,14 @@ public sealed class UserService(
             ?? throw new InvalidOperationException("Operator rolü bulunamadı.");
     }
 
-    private static bool IsUniqueViolation(Exception? exception) =>
-        exception is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } ||
-        exception?.InnerException is not null && IsUniqueViolation(exception.InnerException);
+    internal static bool IsUsernameUniqueViolation(Exception? exception) =>
+        exception switch
+        {
+            PostgresException { SqlState: PostgresErrorCodes.UniqueViolation, ConstraintName: not null } postgres
+                when postgres.ConstraintName is "ux_users_username_lower" or "IX_users_Username" => true,
+            { InnerException: not null } => IsUsernameUniqueViolation(exception.InnerException),
+            _ => false
+        };
 
     private static void ValidateRole(string roleName)
     {
