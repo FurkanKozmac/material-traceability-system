@@ -20,8 +20,10 @@ public sealed class PostgresTestDatabase : IAsyncLifetime
     {
         await container.StartAsync();
         await using var context = CreateContext();
-        await context.Database.EnsureCreatedAsync();
+        await context.Database.MigrateAsync();
     }
+
+    public string ConnectionString => container.GetConnectionString();
 
     public MtsDbContext CreateContext()
     {

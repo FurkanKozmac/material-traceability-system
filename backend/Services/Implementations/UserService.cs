@@ -7,6 +7,7 @@ using backend.Entities;
 using backend.Services.Interfaces;
 using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Npgsql;
 
 namespace backend.Services.Implementations;
 
@@ -64,7 +65,15 @@ public sealed class UserService(
         var role = await GetRoleAsync(request.Role, adminRole, ct);
         user.Roles.Add(role);
         context.Users.Add(user);
-        await context.SaveChangesAsync(ct);
+        try
+        {
+            await context.SaveChangesAsync(ct);
+        }
+        catch (DbUpdateException ex) when (IsUniqueViolation(ex))
+        {
+            throw new BusinessRuleException(
+                "Bu kullanıcı adı zaten kullanılıyor.", "USERNAME_ALREADY_EXISTS");
+        }
         await transaction.CommitAsync(ct);
         return Map(user);
     }
@@ -205,6 +214,10 @@ public sealed class UserService(
         return await context.Roles.SingleOrDefaultAsync(role => role.Name == OperatorRoleName, ct)
             ?? throw new InvalidOperationException("Operator rolü bulunamadı.");
     }
+
+    private static bool IsUniqueViolation(Exception? exception) =>
+        exception is PostgresException { SqlState: PostgresErrorCodes.UniqueViolation } ||
+        exception?.InnerException is not null && IsUniqueViolation(exception.InnerException);
 
     private static void ValidateRole(string roleName)
     {

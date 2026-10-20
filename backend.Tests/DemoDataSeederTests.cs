@@ -112,6 +112,39 @@ public sealed class DemoDataSeederTests
     }
 
     [Fact]
+    public async Task DemoUserLookup_IsCaseInsensitive()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(demoUserEnabled: false),
+            isDevelopment: false);
+
+        var operatorRole = await context.Roles.SingleAsync(role => role.Name == "Operator");
+        var demo = new User { Username = "Demo", AuthSource = "DB", Active = true };
+        demo.Password = BCrypt.Net.BCrypt.HashPassword("old-demo-password");
+        demo.Roles.Add(operatorRole);
+        context.Users.Add(demo);
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(demoUserEnabled: true),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var matchingUsers = await context.Users.Include(user => user.Roles)
+            .Where(user => user.Username.ToLower() == "demo")
+            .ToListAsync();
+        var restoredDemo = Assert.Single(matchingUsers);
+        Assert.Equal("Demo", restoredDemo.Username);
+        Assert.True(restoredDemo.Active);
+        Assert.True(BCrypt.Net.BCrypt.Verify("demo123", restoredDemo.Password));
+        Assert.Contains(restoredDemo.Roles, role => role.Name == "Operator");
+    }
+
+    [Fact]
     public async Task ExistingAdminPassword_IsNotChanged_WhenResetFlagIsOff()
     {
         await using var database = await SqliteTestDatabase.CreateAsync();

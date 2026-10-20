@@ -32,7 +32,7 @@ public static class DbInitializer
         await context.SaveChangesAsync();
 
         var demoUser = await context.Users.Include(user => user.Roles)
-            .FirstOrDefaultAsync(user => user.Username == "demo");
+            .FirstOrDefaultAsync(user => user.Username.ToLower() == "demo");
         if (demoUserEnabled)
         {
             if (demoUser is null)
