@@ -187,6 +187,179 @@ public sealed class DemoDataSeederTests
             message.Contains("new-admin-password", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public async Task DeletedAdmin_IsNotRecreated_WhenAnotherAdminExists()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+        await AddAdminAsync(context, "other-admin");
+
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        context.Users.Remove(admin);
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: ""),
+            isDevelopment: false);
+
+        Assert.False(await context.Users.AnyAsync(user => user.Username == "admin"));
+        Assert.True(await context.Users.AnyAsync(user => user.Username == "other-admin"));
+    }
+
+    [Fact]
+    public async Task DemotedAdmin_IsNotRestored_WhenAnotherAdminExists()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+        await AddAdminAsync(context, "other-admin");
+
+        var admin = await context.Users.Include(user => user.Roles)
+            .SingleAsync(user => user.Username == "admin");
+        var operatorRole = await context.Roles.SingleAsync(role => role.Name == "Operator");
+        admin.Roles.Clear();
+        admin.Roles.Add(operatorRole);
+        admin.Active = false;
+        await context.SaveChangesAsync();
+        var originalHash = admin.Password;
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "different-admin-password"),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var reloadedAdmin = await context.Users.Include(user => user.Roles)
+            .SingleAsync(user => user.Username == "admin");
+        Assert.DoesNotContain(reloadedAdmin.Roles, role => role.Name == "Admin");
+        Assert.Contains(reloadedAdmin.Roles, role => role.Name == "Operator");
+        Assert.Equal(originalHash, reloadedAdmin.Password);
+        Assert.False(reloadedAdmin.Active);
+    }
+
+    [Fact]
+    public async Task AdminPasswordReset_RestoresDeletedAdminWithNewPassword()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        context.Users.Remove(admin);
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "reset-admin-password-123", adminPasswordReset: true),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var restoredAdmin = await context.Users.Include(user => user.Roles)
+            .SingleAsync(user => user.Username == "admin");
+        Assert.True(restoredAdmin.Active);
+        Assert.Contains(restoredAdmin.Roles, role => role.Name == "Admin");
+        Assert.True(BCrypt.Net.BCrypt.Verify("reset-admin-password-123", restoredAdmin.Password));
+    }
+
+    [Fact]
+    public async Task AdminPasswordReset_ReactivatesInactiveAdminWithNewPassword()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        admin.Active = false;
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "reset-admin-password-123", adminPasswordReset: true),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var restoredAdmin = await context.Users.Include(user => user.Roles)
+            .SingleAsync(user => user.Username == "admin");
+        Assert.True(restoredAdmin.Active);
+        Assert.Contains(restoredAdmin.Roles, role => role.Name == "Admin");
+        Assert.True(BCrypt.Net.BCrypt.Verify("reset-admin-password-123", restoredAdmin.Password));
+    }
+
+    [Fact]
+    public async Task AdminPasswordReset_RestoresAdminRoleForRolelessAdmin()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+
+        var admin = await context.Users.Include(user => user.Roles)
+            .SingleAsync(user => user.Username == "admin");
+        admin.Roles.Clear();
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "reset-admin-password-123", adminPasswordReset: true),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var restoredAdmin = await context.Users.Include(user => user.Roles)
+            .SingleAsync(user => user.Username == "admin");
+        Assert.True(restoredAdmin.Active);
+        Assert.Contains(restoredAdmin.Roles, role => role.Name == "Admin");
+        Assert.True(BCrypt.Net.BCrypt.Verify("reset-admin-password-123", restoredAdmin.Password));
+    }
+
+    [Fact]
+    public async Task NoAdminExists_SeedCreatesAdminWithConfiguredPassword()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "bootstrap-admin-password-123"),
+            isDevelopment: false);
+
+        var admin = await context.Users.Include(user => user.Roles)
+            .SingleAsync(user => user.Username == "admin");
+        Assert.True(admin.Active);
+        Assert.Contains(admin.Roles, role => role.Name == "Admin");
+        Assert.True(BCrypt.Net.BCrypt.Verify("bootstrap-admin-password-123", admin.Password));
+    }
+
+    private static async Task AddAdminAsync(MtsDbContext context, string username)
+    {
+        var adminRole = await context.Roles.SingleAsync(role => role.Name == "Admin");
+        var user = new User
+        {
+            Username = username,
+            Active = true,
+            AuthSource = "DB"
+        };
+        user.Password = BCrypt.Net.BCrypt.HashPassword("other-admin-password");
+        user.Roles.Add(adminRole);
+        context.Users.Add(user);
+        await context.SaveChangesAsync();
+    }
+
     private static IConfiguration Configuration(
         bool? demoDataEnabled = null,
         bool? demoUserEnabled = null,
