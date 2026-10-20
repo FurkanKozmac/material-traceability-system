@@ -210,7 +210,7 @@ public class AuthService(
     private string GetLoginFailureKey(string username)
     {
         var ip = httpContextAccessor.HttpContext?.Connection.RemoteIpAddress?.ToString() ?? "unknown";
-        return $"login-failure:{ip}:{username.Trim().ToUpperInvariant()}";
+        return $"login-failure:{ip}:{username.Trim().ToLowerInvariant()}";
     }
 
     private void EnsureLoginAllowed(string key)

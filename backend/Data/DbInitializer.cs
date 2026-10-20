@@ -89,7 +89,7 @@ public static class DbInitializer
         string configuredPassword)
     {
         var admin = await context.Users.Include(user => user.Roles)
-            .FirstOrDefaultAsync(user => user.Username == "admin");
+            .FirstOrDefaultAsync(user => user.Username.ToLower() == "admin");
 
         if (admin is null)
         {

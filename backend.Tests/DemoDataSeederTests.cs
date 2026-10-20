@@ -470,6 +470,65 @@ public sealed class DemoDataSeederTests
         Assert.Equal(originalHash, admin.Password);
     }
 
+    [Fact]
+    public async Task BootstrapRestore_FindsAdminUsernameCaseInsensitively()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        admin.Username = "Admin";
+        admin.Active = false;
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "restored-admin-password-123"),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var matchingUsers = await context.Users.Include(user => user.Roles)
+            .Where(user => user.Username.ToLower() == "admin")
+            .ToListAsync();
+        var restoredAdmin = Assert.Single(matchingUsers);
+        Assert.Equal("Admin", restoredAdmin.Username);
+        Assert.True(restoredAdmin.Active);
+        Assert.Contains(restoredAdmin.Roles, role => role.Name == "Admin");
+        Assert.True(BCrypt.Net.BCrypt.Verify("restored-admin-password-123", restoredAdmin.Password));
+    }
+
+    [Fact]
+    public async Task AdminPasswordReset_FindsAdminUsernameCaseInsensitively()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "initial-admin-password"),
+            isDevelopment: false);
+
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        admin.Username = "Admin";
+        await context.SaveChangesAsync();
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "reset-admin-password-123", adminPasswordReset: true),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var matchingUsers = await context.Users.Include(user => user.Roles)
+            .Where(user => user.Username.ToLower() == "admin")
+            .ToListAsync();
+        var restoredAdmin = Assert.Single(matchingUsers);
+        Assert.Equal("Admin", restoredAdmin.Username);
+        Assert.True(BCrypt.Net.BCrypt.Verify("reset-admin-password-123", restoredAdmin.Password));
+    }
+
     private static async Task AddAdminAsync(MtsDbContext context, string username)
     {
         var adminRole = await context.Roles.SingleAsync(role => role.Name == "Admin");
