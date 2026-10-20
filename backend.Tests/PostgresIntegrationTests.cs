@@ -220,7 +220,12 @@ public class PostgresIntegrationTests(PostgresTestDatabase database)
     private static async Task<User> AddUserAsync(
         backend.Data.MtsDbContext context, string username)
     {
-        var user = new User { Username = username, Active = true };
+        var user = new User
+        {
+            Username = username,
+            Active = true,
+            Roles = [new Role { Name = "Operator" }]
+        };
         user.Password = new Microsoft.AspNetCore.Identity.PasswordHasher<User>()
             .HashPassword(user, "password");
         context.Users.Add(user);
