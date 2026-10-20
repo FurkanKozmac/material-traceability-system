@@ -1,4 +1,4 @@
-name: Backend CI
+name: CI
 
 on:
   push:
@@ -24,3 +24,66 @@ jobs:
 
       - name: Test
         run: dotnet test backend/backend.sln --configuration Release --no-build
+
+  web-portal:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web-portal
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web-portal/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+  mobile-terminal:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: mobile-terminal
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: mobile-terminal/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Test
+        run: npm test
+
+      - name: Export web build
+        run: npx expo export --platform web
+
+  compose-config:
+    runs-on: ubuntu-latest
+    env:
+      POSTGRES_PASSWORD: ci-postgres-password
+      JWT_SECRET: ci-jwt-secret-at-least-32-characters-long
+      ADMIN_PASSWORD: ci-admin-password
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Validate Docker Compose configuration
+        run: docker compose -f docker-compose.yml config --quiet
