@@ -6,6 +6,7 @@ using backend.Services.Implementations.Notifications;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Logging;
 using Moq;
 
 namespace backend.Tests;
@@ -110,11 +111,92 @@ public sealed class DemoDataSeederTests
         Assert.Null(consumed.AddressId);
     }
 
-    private static IConfiguration Configuration(bool? demoDataEnabled = null, bool? demoUserEnabled = null)
+    [Fact]
+    public async Task ExistingAdminPassword_IsNotChanged_WhenResetFlagIsOff()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "first-admin-password"),
+            isDevelopment: false);
+        var originalHash = (await context.Users.SingleAsync(user => user.Username == "admin")).Password;
+
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "second-admin-password"),
+            isDevelopment: false);
+
+        context.ChangeTracker.Clear();
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        Assert.Equal(originalHash, admin.Password);
+        Assert.True(BCrypt.Net.BCrypt.Verify("first-admin-password", admin.Password));
+        Assert.False(BCrypt.Net.BCrypt.Verify("second-admin-password", admin.Password));
+    }
+
+    [Fact]
+    public async Task AdminPasswordReset_ResetsPasswordRevokesActiveTokensAndLogsWarning()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "old-admin-password"),
+            isDevelopment: false);
+
+        var admin = await context.Users.SingleAsync(user => user.Username == "admin");
+        var activeToken = new RefreshToken
+        {
+            UserId = admin.Id,
+            TokenHash = "active-admin-token",
+            ExpiresAt = DateTime.UtcNow.AddDays(1)
+        };
+        var revokedToken = new RefreshToken
+        {
+            UserId = admin.Id,
+            TokenHash = "revoked-admin-token",
+            ExpiresAt = DateTime.UtcNow.AddDays(1),
+            RevokedAt = DateTime.UtcNow.AddHours(-1)
+        };
+        context.RefreshTokens.AddRange(activeToken, revokedToken);
+        await context.SaveChangesAsync();
+        var previousRevokedAt = revokedToken.RevokedAt;
+
+        var logger = new ListLogger();
+        await DbInitializer.SeedAsync(
+            context,
+            Configuration(adminPassword: "new-admin-password", adminPasswordReset: true),
+            isDevelopment: false,
+            logger);
+
+        context.ChangeTracker.Clear();
+        var updatedAdmin = await context.Users.SingleAsync(user => user.Username == "admin");
+        var updatedActiveToken = await context.RefreshTokens
+            .SingleAsync(token => token.TokenHash == "active-admin-token");
+        var updatedRevokedToken = await context.RefreshTokens
+            .SingleAsync(token => token.TokenHash == "revoked-admin-token");
+
+        Assert.True(BCrypt.Net.BCrypt.Verify("new-admin-password", updatedAdmin.Password));
+        Assert.False(BCrypt.Net.BCrypt.Verify("old-admin-password", updatedAdmin.Password));
+        Assert.NotNull(updatedActiveToken.RevokedAt);
+        Assert.Equal(previousRevokedAt, updatedRevokedToken.RevokedAt);
+        Assert.Contains(logger.Messages, message =>
+            message.Contains("WARNING: ADMIN_PASSWORD_RESET flag is ACTIVE!", StringComparison.Ordinal));
+        Assert.DoesNotContain(logger.Messages, message =>
+            message.Contains("new-admin-password", StringComparison.Ordinal));
+    }
+
+    private static IConfiguration Configuration(
+        bool? demoDataEnabled = null,
+        bool? demoUserEnabled = null,
+        string adminPassword = "test-admin-password-123",
+        bool adminPasswordReset = false)
     {
         var settings = new Dictionary<string, string?>
         {
-            ["ADMIN_PASSWORD"] = "test-admin-password-123",
+            ["ADMIN_PASSWORD"] = adminPassword,
+            ["ADMIN_PASSWORD_RESET"] = adminPasswordReset.ToString().ToLowerInvariant(),
             ["DEMO_USER_ENABLED"] = demoUserEnabled?.ToString().ToLowerInvariant(),
             ["DEMO_DATA_ENABLED"] = demoDataEnabled?.ToString().ToLowerInvariant()
         };
@@ -137,5 +219,22 @@ public sealed class DemoDataSeederTests
         var hub = new Mock<IHubContext<TraceabilityHub>>();
         hub.Setup(value => value.Clients).Returns(clients.Object);
         return hub;
+    }
+
+    private sealed class ListLogger : ILogger
+    {
+        public List<string> Messages { get; } = [];
+
+        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+        public bool IsEnabled(LogLevel logLevel) => true;
+
+        public void Log<TState>(
+            LogLevel logLevel,
+            EventId eventId,
+            TState state,
+            Exception? exception,
+            Func<TState, Exception?, string> formatter) =>
+            Messages.Add(formatter(state, exception));
     }
 }

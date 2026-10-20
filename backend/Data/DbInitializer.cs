@@ -1,27 +1,20 @@
 using backend.Entities;
-using Microsoft.AspNetCore.Identity;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 
 namespace backend.Data;
 
 public static class DbInitializer
 {
-    private static bool PasswordMatches(User user, string configuredPassword)
-    {
-        if (user.Password.StartsWith("$2", StringComparison.Ordinal))
-        {
-            try { return BCrypt.Net.BCrypt.Verify(configuredPassword, user.Password); }
-            catch (BCrypt.Net.SaltParseException) { return false; }
-        }
-        if (user.Password.StartsWith("AQAAAA", StringComparison.Ordinal))
-            return new PasswordHasher<User>().VerifyHashedPassword(user, user.Password, configuredPassword) != PasswordVerificationResult.Failed;
-        return user.Password == configuredPassword;
-    }
-
-    public static async Task SeedAsync(MtsDbContext context, IConfiguration configuration, bool isDevelopment)
+    public static async Task SeedAsync(
+        MtsDbContext context,
+        IConfiguration configuration,
+        bool isDevelopment,
+        ILogger? logger = null)
     {
         var demoDataEnabled = ReadBooleanSetting(configuration, "DEMO_DATA_ENABLED", isDevelopment);
         var demoUserEnabled = ReadBooleanSetting(configuration, "DEMO_USER_ENABLED", isDevelopment);
+        var adminPasswordReset = ReadBooleanSetting(configuration, "ADMIN_PASSWORD_RESET", false);
 
         var adminRole = await context.Roles.FirstOrDefaultAsync(role => role.Name == "Admin");
         if (adminRole is null)
@@ -49,8 +42,7 @@ public static class DbInitializer
             }
             demoUser.Active = true;
             demoUser.AuthSource = "DB";
-            if (!PasswordMatches(demoUser, "demo123"))
-                demoUser.Password = BCrypt.Net.BCrypt.HashPassword("demo123");
+            demoUser.Password = BCrypt.Net.BCrypt.HashPassword("demo123");
             demoUser.Roles.Clear();
             demoUser.Roles.Add(operatorRole);
             await context.SaveChangesAsync();
@@ -83,12 +75,27 @@ public static class DbInitializer
         }
         else
         {
-            if (!PasswordMatches(existingAdmin, configuredAdminPassword))
-                existingAdmin.Password = BCrypt.Net.BCrypt.HashPassword(configuredAdminPassword);
             if (!existingAdmin.Roles.Any(role => role.Name == "Admin"))
                 existingAdmin.Roles.Add(adminRole);
+
+            if (adminPasswordReset)
+            {
+                existingAdmin.Password = BCrypt.Net.BCrypt.HashPassword(configuredAdminPassword);
+                var activeRefreshTokens = await context.RefreshTokens
+                    .Where(token => token.UserId == existingAdmin.Id && token.RevokedAt == null)
+                    .ToListAsync();
+                foreach (var token in activeRefreshTokens)
+                    token.RevokedAt = DateTime.UtcNow;
+            }
         }
         await context.SaveChangesAsync();
+
+        if (adminPasswordReset)
+        {
+            logger?.LogWarning(
+                "WARNING: ADMIN_PASSWORD_RESET flag is ACTIVE! Admin password has been reset. " +
+                "Please remove this flag from your environment variables immediately.");
+        }
 
         if (demoDataEnabled)
             await DemoDataSeeder.SeedAsync(context);

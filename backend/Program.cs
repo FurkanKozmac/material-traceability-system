@@ -223,7 +223,11 @@ using (var scope = app.Services.CreateScope())
 {
     var context = scope.ServiceProvider.GetRequiredService<MtsDbContext>();
     await context.Database.MigrateAsync();
-    await DbInitializer.SeedAsync(context, builder.Configuration, builder.Environment.IsDevelopment());
+    await DbInitializer.SeedAsync(
+        context,
+        builder.Configuration,
+        builder.Environment.IsDevelopment(),
+        app.Logger);
 }
 
 app.Run();
