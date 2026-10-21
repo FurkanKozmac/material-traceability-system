@@ -10,6 +10,7 @@ globalThis.localStorage = {
 const {
   clearSession, currentUsername, getStoredUser, hasAnyPermission, isAdmin, isOperator,
 } = await import('../src/auth.js');
+const { canAccessAdmin } = await import('../src/domain/access.js');
 const { pendingOperation } = await import('../src/idempotency.js');
 
 test('stored user rejects malformed or incomplete session data', () => {
@@ -25,6 +26,9 @@ test('admin bypasses permission checks and operators require an explicit permiss
   assert.equal(isAdmin(admin), true);
   assert.equal(isOperator(operator), true);
   assert.equal(isOperator(admin), false);
+  assert.equal(isAdmin(operator), false);
+  assert.equal(canAccessAdmin(admin), true);
+  assert.equal(canAccessAdmin(operator), false);
   assert.equal(hasAnyPermission(['MANAGE_SECURITY'], admin), true);
   assert.equal(hasAnyPermission(['READ_STOCK'], operator), true);
   assert.equal(hasAnyPermission(['MANAGE_SECURITY'], operator), false);

@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-d
 import { LinearProgress } from '@mui/material';
 import Layout from './components/Layout';
 import ProtectedRoute from './components/ProtectedRoute';
+import AdminRoute from './components/AdminRoute';
 import ErrorBoundary from './components/ErrorBoundary';
 import { getStoredUser } from './auth';
 import { LanguageProvider } from './LanguageContext';
@@ -19,6 +20,7 @@ const RelocationTasks = lazy(() => import('./pages/RelocationTasks'));
 const SafetyAssistant = lazy(() => import('./pages/SafetyAssistant'));
 const Settings = lazy(() => import('./pages/Settings'));
 const ChangePassword = lazy(() => import('./pages/ChangePassword'));
+const UserManagement = lazy(() => import('./pages/UserManagement'));
 
 // Smart redirect: token varsa dashboard'a, yoksa login'e
 function SmartRedirect() {
@@ -51,6 +53,7 @@ function App() {
                   <Route path="/safety-assistant" element={<SafetyAssistant />} />
                   <Route path="/settings" element={<Settings />} />
                   <Route path="/change-password" element={<ChangePassword />} />
+                  <Route path="/users" element={<AdminRoute><UserManagement /></AdminRoute>} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Route>
               </Route>
