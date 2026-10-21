@@ -1,5 +1,13 @@
-export const isUnauthorizedHubError = (error) =>
-  error?.statusCode === 401 || error?.response?.status === 401;
+export const isUnauthorizedHubError = (error) => {
+  const message = typeof error?.message === 'string' ? error.message : '';
+  return error?.statusCode === 401 ||
+    error?.response?.status === 401 ||
+    /401/.test(message) ||
+    /unauthorized/i.test(message);
+};
+
+export const shouldRetryClosedHub = (error, alreadyRetried) =>
+  !alreadyRetried && isUnauthorizedHubError(error);
 
 export async function startHubWithSingleRefresh({
   start, refresh, clearSession, redirectToLogin,

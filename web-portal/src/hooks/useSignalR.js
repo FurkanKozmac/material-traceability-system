@@ -2,7 +2,7 @@ import { useEffect, useRef } from 'react';
 import { HubConnectionBuilder, LogLevel } from '@microsoft/signalr';
 import { refreshAccessToken } from '../api';
 import { clearSession, getStoredUser } from '../auth';
-import { startHubWithSingleRefresh } from '../domain/signalrAuth';
+import { shouldRetryClosedHub, startHubWithSingleRefresh } from '../domain/signalrAuth';
 
 const getHubUrl = () => {
   const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5059/api';
@@ -14,6 +14,9 @@ export default function useSignalR(eventName, onEvent) {
   handlerRef.current = onEvent;
 
   useEffect(() => {
+    let disposed = false;
+    let initialStartSettled = false;
+    let closeRetryAttempted = false;
     const connection = new HubConnectionBuilder()
       .withUrl(getHubUrl(), {
         accessTokenFactory: () => {
@@ -26,7 +29,8 @@ export default function useSignalR(eventName, onEvent) {
       .build();
 
     connection.on(eventName, (payload) => handlerRef.current?.(payload));
-    void startHubWithSingleRefresh({
+
+    const startOrRefresh = () => startHubWithSingleRefresh({
       start: () => connection.start(),
       refresh: refreshAccessToken,
       clearSession,
@@ -37,7 +41,20 @@ export default function useSignalR(eventName, onEvent) {
       },
     });
 
+    connection.onclose(async (error) => {
+      if (disposed || !initialStartSettled ||
+        !shouldRetryClosedHub(error, closeRetryAttempted)) return;
+      closeRetryAttempted = true;
+      await startOrRefresh();
+    });
+
+    void startOrRefresh().then((result) => {
+      initialStartSettled = true;
+      if (result === 'logged-out') closeRetryAttempted = true;
+    });
+
     return () => {
+      disposed = true;
       connection.off(eventName);
       connection.stop().catch(() => {});
     };

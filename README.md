@@ -57,17 +57,6 @@ docker compose up --build -d
 
 Only Caddy publishes ports 80 and 443. PostgreSQL, the API, and Nginx stay on the private Compose network. Mailpit is disabled by default; start it only for local email testing with `docker compose --profile dev up --build -d`.
 
-### Physical iOS terminal on the local network
-
-The API is private to the Compose network by default. To connect a physical iPhone during local development, opt in to the LAN-only override and bind the API to the Mac's current Wi-Fi IP (for example, `192.168.1.157`):
-
-```bash
-MOBILE_API_BIND_ADDRESS=192.168.1.157 docker compose -f docker-compose.yml -f docker-compose.mobile-dev.yml up -d backend
-curl http://192.168.1.157:5059/api/health
-```
-
-Keep the phone and Mac on the same Wi-Fi. In the terminal's **Server Connection Settings**, enter `http://192.168.1.157:5059`. If the Mac's LAN IP changes, use the new IP in both commands. The override is development-only and binds the API to the chosen host IP; requests use HTTP, so use a trusted private network. Do not enable this override in production. The iOS app declares local-network access and ATS local-network support in `app.json`; rebuild and reinstall the iOS app after changing those native settings.
-
 `POSTGRES_PASSWORD` initializes the PostgreSQL role only when the data volume is first created. Changing the environment value later does not change the password stored in an existing volume; update the database role and environment together, or provision a separate volume and migrate data before switching.
 
 ### Access URLs:
