@@ -6,7 +6,7 @@ const api = axios.create({
 
 let refreshPromise = null;
 
-const refreshAccessToken = async () => {
+export const refreshAccessToken = async () => {
   if (refreshPromise) return refreshPromise;
   refreshPromise = (async () => {
     const storedUser = JSON.parse(localStorage.getItem('user') || 'null');

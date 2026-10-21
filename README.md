@@ -166,12 +166,19 @@ For the intentionally public demo, enable both `DEMO_USER_ENABLED=true` and `DEM
 
 Try these predictable, entirely fictional barcode values:
 
+Consume example:
+
 - Batch (consume flow): `BAT-DEMO-BAT-001`
 - Unit (consume flow): `UNIT-DEMO-UNIT-001`
-- Rack (consume flow): `ADR-DEMO-RACK-GEN-01`
 - Near-expiry batch example: `BAT-DEMO-BAT-002`
 
-Consume için birimin kendi batch'i okutulmalı (BATCH_MISMATCH).
+Consume için birimin kendi batch'i okutulmalı (BATCH_MISMATCH). For consume, the unit's own batch must be scanned (BATCH_MISMATCH).
+
+Relocation example (create a relocation task first):
+
+- Unit: `UNIT-DEMO-UNIT-002`
+- Current rack: `ADR-DEMO-RACK-GEN-01`
+- Destination rack (relocation): `ADR-DEMO-RACK-GEN-02`
 
 The demo inventory is reset daily by the guarded reset script. Reset removes business inventory only; admin/demo accounts, roles, refresh tokens, and system settings are preserved. It writes a PostgreSQL backup before deletion and retains the two newest backups. Restrict this automation to a demo-only deployment because it clears all business rows in the listed tables.
 

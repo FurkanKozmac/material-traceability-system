@@ -6,6 +6,7 @@ import {
 import api from '../api';
 import { getStoredUser } from '../auth';
 import { getLocalizedApiError } from '../apiError';
+import { isSameUser, requiresRoleConfirmation } from '../domain/users';
 import { USER_ROLES, validateCreateUser, validateResetPassword } from '../domain/userValidation';
 import { useLanguage } from '../useLanguage';
 
@@ -22,6 +23,7 @@ export default function UserManagement() {
   const [resetPassword, setResetPassword] = useState('');
   const [resetError, setResetError] = useState('');
   const [confirmAction, setConfirmAction] = useState(null);
+  const [busyUserId, setBusyUserId] = useState(null);
 
   const load = async () => {
     const response = await api.get('/users');
@@ -59,40 +61,59 @@ export default function UserManagement() {
   };
 
   const updateRole = async (user, role) => {
+    setBusyUserId(user.id);
     try {
       await api.put(`/users/${user.id}/role`, { role });
       setMessage({ type: 'success', text: t('userRoleUpdated') });
       await load();
     } catch (error) {
       await handleError(error, t('roleUpdateFailed'));
+    } finally {
+      setBusyUserId(null);
     }
   };
 
+  const requestRoleChange = (user, role) => {
+    if (user.role === role) return;
+    if (requiresRoleConfirmation(user, role, currentUser)) {
+      setConfirmAction({ type: 'role', user, role });
+      return;
+    }
+    updateRole(user, role);
+  };
+
   const updateActive = async (user, active) => {
+    setBusyUserId(user.id);
     try {
       await api.put(`/users/${user.id}/active`, { active });
       setMessage({ type: 'success', text: t(active ? 'userActivated' : 'userDeactivated') });
       await load();
     } catch (error) {
       await handleError(error, t('userStatusUpdateFailed'));
+    } finally {
+      setBusyUserId(null);
     }
   };
 
   const remove = async (user) => {
+    setBusyUserId(user.id);
     try {
       await api.delete(`/users/${user.id}`);
       setMessage({ type: 'success', text: t('userDeleted') });
       await load();
     } catch (error) {
       await handleError(error, t('userDeleteFailed'));
+    } finally {
+      setBusyUserId(null);
     }
   };
 
   const confirmSelectedAction = async () => {
     if (!confirmAction) return;
-    const { type, user } = confirmAction;
+    const { type, user, role } = confirmAction;
     setConfirmAction(null);
     if (type === 'delete') await remove(user);
+    else if (type === 'role') await updateRole(user, role);
     else await updateActive(user, false);
   };
 
@@ -115,6 +136,7 @@ export default function UserManagement() {
       return;
     }
 
+    setBusyUserId(resetTarget.id);
     try {
       await api.post(`/users/${resetTarget.id}/reset-password`, { newPassword: resetPassword });
       closeReset();
@@ -123,8 +145,23 @@ export default function UserManagement() {
     } catch (error) {
       setResetError(getLocalizedApiError(error, t, t('passwordResetFailed')));
       await load().catch(() => {});
+    } finally {
+      setBusyUserId(null);
     }
   };
+
+  const confirmIsRole = confirmAction?.type === 'role';
+  const confirmTitle = confirmIsRole
+    ? t('changeUserRoleTitle')
+    : confirmAction?.type === 'delete' ? t('deleteUserTitle') : t('deactivateUserTitle');
+  const confirmText = (confirmIsRole
+    ? t('roleChangeConfirm')
+    : confirmAction?.type === 'delete' ? t('deleteUserConfirm') : t('deactivateUserConfirm'))
+    .replace('{username}', confirmAction?.user?.username || '')
+    .replace('{role}', confirmAction?.role || '');
+  const confirmButton = confirmIsRole
+    ? t('changeRole')
+    : confirmAction?.type === 'delete' ? t('delete') : t('deactivate');
 
   return <Box>
     <Typography variant="h4" sx={{ mb: 1, fontWeight: 600 }}>{t('userManagementTitle')}</Typography>
@@ -155,12 +192,14 @@ export default function UserManagement() {
         </TableHead>
         <TableBody>
           {users.map((user) => {
-            const isSelf = user.id === currentUser?.id;
+            const isSelf = isSameUser(user, currentUser);
+            const rowBusy = busyUserId === user.id;
             return <TableRow key={user.id}>
               <TableCell>{user.username}</TableCell>
               <TableCell>
                 <TextField select size="small" value={user.role} sx={{ minWidth: 140 }}
-                  onChange={(event) => updateRole(user, event.target.value)}>
+                  disabled={rowBusy}
+                  onChange={(event) => requestRoleChange(user, event.target.value)}>
                   {USER_ROLES.map((role) => <MenuItem key={role} value={role}>{role}</MenuItem>)}
                 </TextField>
               </TableCell>
@@ -170,15 +209,17 @@ export default function UserManagement() {
               </TableCell>
               <TableCell>
                 <Box sx={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                  <Button size="small" disabled={isSelf && user.active}
+                  <Button size="small" disabled={rowBusy || (isSelf && user.active)}
                     title={isSelf && user.active ? t('selfActionDisabled') : undefined}
                     onClick={() => user.active
                       ? setConfirmAction({ type: 'deactivate', user })
                       : updateActive(user, true)}>
                     {user.active ? t('deactivate') : t('activate')}
                   </Button>
-                  <Button size="small" onClick={() => openReset(user)}>{t('resetPassword')}</Button>
-                  <Button size="small" color="error" disabled={isSelf}
+                  <Button size="small" disabled={rowBusy} onClick={() => openReset(user)}>
+                    {t('resetPassword')}
+                  </Button>
+                  <Button size="small" color="error" disabled={rowBusy || isSelf}
                     title={isSelf ? t('selfActionDisabled') : undefined}
                     onClick={() => setConfirmAction({ type: 'delete', user })}>
                     {t('delete')}
@@ -209,20 +250,15 @@ export default function UserManagement() {
     </Dialog>
 
     <Dialog open={Boolean(confirmAction)} onClose={() => setConfirmAction(null)}>
-      <DialogTitle>
-        {confirmAction?.type === 'delete' ? t('deleteUserTitle') : t('deactivateUserTitle')}
-      </DialogTitle>
+      <DialogTitle>{confirmTitle}</DialogTitle>
       <DialogContent>
-        <DialogContentText>
-          {(confirmAction?.type === 'delete' ? t('deleteUserConfirm') : t('deactivateUserConfirm'))
-            .replace('{username}', confirmAction?.user?.username || '')}
-        </DialogContentText>
+        <DialogContentText>{confirmText}</DialogContentText>
       </DialogContent>
       <DialogActions>
         <Button onClick={() => setConfirmAction(null)}>{t('cancel')}</Button>
         <Button color={confirmAction?.type === 'delete' ? 'error' : 'warning'} variant="contained"
           onClick={confirmSelectedAction}>
-          {confirmAction?.type === 'delete' ? t('delete') : t('deactivate')}
+          {confirmButton}
         </Button>
       </DialogActions>
     </Dialog>
