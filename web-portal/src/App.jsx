@@ -18,6 +18,7 @@ const QrLabelManager = lazy(() => import('./pages/QrLabelManager'));
 const RelocationTasks = lazy(() => import('./pages/RelocationTasks'));
 const SafetyAssistant = lazy(() => import('./pages/SafetyAssistant'));
 const Settings = lazy(() => import('./pages/Settings'));
+const ChangePassword = lazy(() => import('./pages/ChangePassword'));
 
 // Smart redirect: token varsa dashboard'a, yoksa login'e
 function SmartRedirect() {
@@ -49,6 +50,7 @@ function App() {
                   <Route path="/relocation-tasks" element={<RelocationTasks />} />
                   <Route path="/safety-assistant" element={<SafetyAssistant />} />
                   <Route path="/settings" element={<Settings />} />
+                  <Route path="/change-password" element={<ChangePassword />} />
                   <Route path="*" element={<Navigate to="/dashboard" replace />} />
                 </Route>
               </Route>

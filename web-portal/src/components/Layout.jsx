@@ -2,7 +2,7 @@ import React from 'react';
 import { Outlet, useNavigate, useLocation } from 'react-router-dom';
 import api from '../api';
 import { Box, Typography, Button, Drawer, List, ListItem, ListItemButton, ListItemIcon, ListItemText, CssBaseline, Avatar, AppBar, Toolbar, ButtonGroup } from '@mui/material';
-import { Dashboard as DashboardIcon, Science, Inventory2, LocationOn, Sell, QrCode2, SwapHoriz, Shield, ExitToApp, Settings as SettingsIcon } from '@mui/icons-material';
+import { Dashboard as DashboardIcon, Science, Inventory2, LocationOn, Sell, QrCode2, SwapHoriz, Shield, ExitToApp, Settings as SettingsIcon, LockReset } from '@mui/icons-material';
 import { getStoredUser } from '../auth';
 import { useLanguage } from '../useLanguage';
 
@@ -25,6 +25,7 @@ export default function Layout() {
     { text: t('relocationTasks'), key: 'relocationTasks', path: '/relocation-tasks', icon: <SwapHoriz /> },
     { text: t('safetyAssistant.title'), key: 'safetyAssistant', path: '/safety-assistant', icon: <Shield /> },
     { text: t('settings'), key: 'settings', path: '/settings', icon: <SettingsIcon /> },
+    { text: t('changePassword'), key: 'changePassword', path: '/change-password', icon: <LockReset /> },
   ];
 
   const handleLogout = async () => {

@@ -7,7 +7,9 @@ globalThis.localStorage = {
   setItem: (key, value) => values.set(key, String(value)),
   removeItem: (key) => values.delete(key),
 };
-const { getStoredUser, hasAnyPermission, isAdmin, isOperator } = await import('../src/auth.js');
+const {
+  clearSession, currentUsername, getStoredUser, hasAnyPermission, isAdmin, isOperator,
+} = await import('../src/auth.js');
 const { pendingOperation } = await import('../src/idempotency.js');
 
 test('stored user rejects malformed or incomplete session data', () => {
@@ -26,6 +28,15 @@ test('admin bypasses permission checks and operators require an explicit permiss
   assert.equal(hasAnyPermission(['MANAGE_SECURITY'], admin), true);
   assert.equal(hasAnyPermission(['READ_STOCK'], operator), true);
   assert.equal(hasAnyPermission(['MANAGE_SECURITY'], operator), false);
+});
+
+test('current username is read from session and clearSession removes it', () => {
+  values.set('user', JSON.stringify({
+    username: 'operator.one', accessToken: 'token', roles: ['Operator'],
+  }));
+  assert.equal(currentUsername(), 'operator.one');
+  clearSession();
+  assert.equal(getStoredUser(), null);
 });
 
 test('pending operation key survives retry and is cleared only after success', () => {

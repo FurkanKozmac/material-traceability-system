@@ -10,6 +10,10 @@ export const getStoredUser = () => {
   }
 };
 
+export const currentUsername = (user = getStoredUser()) => user?.username || '';
+
+export const clearSession = () => localStorage.removeItem('user');
+
 export const isAdmin = (user = getStoredUser()) => Boolean(
   user?.roles?.some((role) => role === 'Admin' || role === 'ROLE_ADMIN'));
 
