@@ -166,9 +166,12 @@ For the intentionally public demo, enable both `DEMO_USER_ENABLED=true` and `DEM
 
 Try these predictable, entirely fictional barcode values:
 
-- Batch: `BAT-DEMO-BAT-002` (near expiry)
-- Unit: `UNIT-DEMO-UNIT-001`
-- Destination rack: `ADR-DEMO-RACK-SOL-02`
+- Batch (consume flow): `BAT-DEMO-BAT-001`
+- Unit (consume flow): `UNIT-DEMO-UNIT-001`
+- Rack (consume flow): `ADR-DEMO-RACK-GEN-01`
+- Near-expiry batch example: `BAT-DEMO-BAT-002`
+
+Consume için birimin kendi batch'i okutulmalı (BATCH_MISMATCH).
 
 The demo inventory is reset daily by the guarded reset script. Reset removes business inventory only; admin/demo accounts, roles, refresh tokens, and system settings are preserved. It writes a PostgreSQL backup before deletion and retains the two newest backups. Restrict this automation to a demo-only deployment because it clears all business rows in the listed tables.
 
