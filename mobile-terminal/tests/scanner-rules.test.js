@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { evaluateScanAction } from '../src/domain/scannerRules.js';
+import { consumeErrorKey } from '../src/domain/consumeErrors.js';
 
 const valid = { status: 'ON_HAND', blocked: false, expired: false, fifoCompliant: true,
   allowedActions: ['PICK'], ownedByOrder: true, resolvedLine: { id: 10 }, order: { status: 'ALLOCATED' } };
@@ -26,4 +27,11 @@ test('issue and consume require order ownership and exact lifecycle state', () =
 
 test('pick requires a matching open order line', () => {
   assert.equal(evaluateScanAction({ result: { ...valid, resolvedLine: null }, mode: 'PICK' }).canExecute, false);
+});
+
+test('consume batch errors map to localized message keys', () => {
+  assert.equal(consumeErrorKey('BATCH_REQUIRED'), 'batchRequired');
+  assert.equal(consumeErrorKey('BATCH_BARCODE_INVALID'), 'batchBarcodeInvalid');
+  assert.equal(consumeErrorKey('BATCH_MISMATCH'), 'batchMismatch');
+  assert.equal(consumeErrorKey('OTHER'), 'consumeFailed');
 });

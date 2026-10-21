@@ -1,3 +1,4 @@
+using backend.Common.Barcodes;
 using backend.Common.Exceptions;
 using backend.Common.Events;
 using backend.Data;
@@ -174,7 +175,8 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
         return true;
     }
 
-    public async Task<UnitResponse> ConsumeAsync(string barcode, CancellationToken ct = default)
+    public async Task<UnitResponse> ConsumeAsync(
+        string barcode, string? batchBarcode, CancellationToken ct = default)
     {
         var unit = await context.Units
             .Include(u => u.Batch).ThenInclude(b => b.Chemical)
@@ -183,6 +185,16 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
 
         if (unit is null)
             throw new InvalidOperationException($"'{barcode}' barkodlu stok birimi bulunamadı!");
+
+        if (string.IsNullOrWhiteSpace(batchBarcode))
+            throw new BusinessRuleException("Parti barkodu zorunludur.", "BATCH_REQUIRED");
+
+        if (!BatchBarcodeParser.TryParse(batchBarcode, out var batchNo))
+            throw new BusinessRuleException("Geçersiz parti barkodu.", "BATCH_BARCODE_INVALID");
+
+        if (!string.Equals(batchNo, unit.Batch.BatchNo, StringComparison.OrdinalIgnoreCase))
+            throw new BusinessRuleException(
+                "Bu birim okuttuğunuz partiye ait değil.", "BATCH_MISMATCH");
 
         if (unit.Status != "InStock" && unit.Status != "AVAILABLE")
             throw new BusinessRuleException("Yalnızca stokta bulunan birim tüketime verilebilir!");

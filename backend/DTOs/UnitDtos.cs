@@ -21,3 +21,5 @@ public record CreateUnitRequest(
     [Required] long BatchId,
     long? AddressId
 );
+
+public record ConsumeUnitRequest(string? BatchBarcode);

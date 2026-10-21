@@ -1,12 +1,14 @@
 using System.Net;
 using System.Reflection;
 using System.Text;
+using System.Text.Json;
 using System.Net.Http.Json;
 using backend.Common.Enums;
 using backend.Common.Security;
 using backend.Data;
 using backend.DTOs;
 using backend.Entities;
+using backend.Middlewares;
 using backend.Services.Implementations;
 using backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authentication;
@@ -97,12 +99,30 @@ public sealed class AuthorizationEndpointTests
     {
         using var host = CreateHost();
         using var client = host.GetTestClient();
-        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/units/BAR-DEMO-UNIT-001/consume");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/units/BAR-DEMO-UNIT-001/consume")
+        {
+            Content = JsonContent.Create(new ConsumeUnitRequest("BAT-DEMO-BAT-001"))
+        };
         request.Headers.Add("X-Test-Roles", "Operator");
 
         using var response = await client.SendAsync(request);
 
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Consume_WithoutBody_ReturnsBatchRequired()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/units/BAR-DEMO-UNIT-001/consume");
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+        var payload = await response.Content.ReadFromJsonAsync<JsonElement>();
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        Assert.Equal("BATCH_REQUIRED", payload.GetProperty("errorCode").GetString());
     }
 
     [Fact]
@@ -287,7 +307,8 @@ public sealed class AuthorizationEndpointTests
             .ReturnsAsync(true);
         var addresses = new Mock<IAddressService>();
         var units = new Mock<IUnitService>();
-        units.Setup(service => service.ConsumeAsync("BAR-DEMO-UNIT-001", It.IsAny<CancellationToken>()))
+        units.Setup(service => service.ConsumeAsync(
+                "BAR-DEMO-UNIT-001", It.IsAny<string?>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(new UnitResponse(1, "BAR-DEMO-UNIT-001", "Depleted", null, null, 1,
                 "DEMO-BAT-001", "Polymer Stabilizer M-01", "DEMO-CHM-01", DateTime.UtcNow.AddDays(180), false));
         var settings = new Mock<ISettingsService>();
@@ -371,6 +392,7 @@ public sealed class AuthorizationEndpointTests
             .Configure(app =>
             {
                 app.UseRouting();
+                app.UseMiddleware<GlobalExceptionHandlerMiddleware>();
                 app.UseAuthentication();
                 app.UseAuthorization();
                 app.UseEndpoints(endpoints => endpoints.MapControllers());

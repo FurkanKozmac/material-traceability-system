@@ -59,6 +59,17 @@ const extractErrorMessage = async (response, defaultMsg) => {
   }
 };
 
+const extractApiError = async (response, defaultMsg) => {
+  try {
+    const data = JSON.parse(await response.text());
+    const error = new Error(data.message || defaultMsg);
+    if (data.errorCode) error.code = data.errorCode;
+    return error;
+  } catch (e) {
+    return new Error(defaultMsg);
+  }
+};
+
 const readJsonResponse = async (response, context) => {
   const contentType = response.headers.get('content-type') || '';
   const text = await response.text();
@@ -179,15 +190,15 @@ export const getLabelPreviewUrl = async (payload) => {
   return `${baseUrl}/api/labels/preview?payload=${encodeURIComponent(payload)}`;
 };
 
-export const consumeUnit = async (barcode) => {
+export const consumeUnit = async (barcode, batchBarcode) => {
   const baseUrl = await getBackendUrl();
   const headers = await getHeaders();
   const response = await fetchWithAuth(
     `${baseUrl}/api/units/${encodeURIComponent(barcode)}/consume`,
-    { method: 'POST', headers }
+    { method: 'POST', headers, body: JSON.stringify({ batchBarcode }) }
   );
   if (!response.ok) {
-    throw new Error(await extractErrorMessage(response, 'Stok birimi tüketime verilemedi'));
+    throw await extractApiError(response, 'Stok birimi tüketime verilemedi');
   }
   return readJsonResponse(response, 'Tüketim işlemi başarısız');
 };

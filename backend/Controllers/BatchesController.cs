@@ -1,3 +1,4 @@
+using backend.Common.Barcodes;
 using backend.Data;
 using backend.DTOs;
 using backend.Services.Interfaces;
@@ -82,11 +83,8 @@ public class BatchesController(
     [HttpGet("barcode/{barcode}")]
     public async Task<IActionResult> GetByBarcode(string barcode, CancellationToken ct)
     {
-        const string prefix = "BAT-";
-        if (!barcode.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        if (!BatchBarcodeParser.TryParse(barcode, out var batchNo))
             return BadRequest("Geçersiz batch barkodu.");
-
-        var batchNo = barcode[prefix.Length..];
         var batch = await context.Batches
             .AsNoTracking()
             .Where(b => b.BatchNo == batchNo)
@@ -94,7 +92,7 @@ public class BatchesController(
             {
                 b.Id,
                 b.BatchNo,
-                BatchBarcode = prefix + b.BatchNo,
+                BatchBarcode = BatchBarcodeParser.Prefix + b.BatchNo,
                 b.ChemicalId,
                 ChemicalName = b.Chemical.Name,
                 ChemicalCode = b.Chemical.ChemicalCode,

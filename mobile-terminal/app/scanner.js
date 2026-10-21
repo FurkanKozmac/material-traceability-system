@@ -4,6 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { consumeUnit, scanBatch, scanUnit } from '../src/services/api';
 import { useLanguage } from '../src/context/LanguageContext';
+import { consumeErrorKey } from '../src/domain/consumeErrors';
 
 export default function ScannerScreen() {
   const router = useRouter();
@@ -99,13 +100,13 @@ export default function ScannerScreen() {
     if (!unit || loading) return;
     setLoading(true);
     try {
-      const result = await consumeUnit(unit.barcode);
+      const result = await consumeUnit(unit.barcode, activeBatch.batchBarcode);
       setUnit(result);
       setActiveBatch(await scanBatch(activeBatch.batchBarcode));
       Vibration.vibrate([0, 100, 50, 100]);
       Alert.alert(t('success'), t('consumeSuccess'));
     } catch (error) {
-      Alert.alert(t('consumeFailed'), t('consumeFailed'));
+      Alert.alert(t('consumeFailed'), t(consumeErrorKey(error.code)));
     } finally {
       setLoading(false);
     }

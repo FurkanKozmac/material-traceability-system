@@ -1,6 +1,8 @@
+using backend.Common.Exceptions;
 using backend.DTOs;
 using backend.Services.Interfaces;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Mvc.ModelBinding;
 using Microsoft.AspNetCore.Authorization;
 
 namespace backend.Controllers;
@@ -64,11 +66,17 @@ public class UnitsController(IUnitService unitService) : ControllerBase
 
     [HttpPost("{barcode}/consume")]
     [Authorize(Roles = "Admin,Operator")]
-    public async Task<ActionResult<UnitResponse>> Consume(string barcode, CancellationToken ct)
+    public async Task<ActionResult<UnitResponse>> Consume(
+        string barcode,
+        [FromBody(EmptyBodyBehavior = EmptyBodyBehavior.Allow)] ConsumeUnitRequest? request,
+        CancellationToken ct)
     {
+        if (request is null || string.IsNullOrWhiteSpace(request.BatchBarcode))
+            throw new BusinessRuleException("Parti barkodu zorunludur.", "BATCH_REQUIRED");
+
         try
         {
-            var result = await unitService.ConsumeAsync(barcode, ct);
+            var result = await unitService.ConsumeAsync(barcode, request.BatchBarcode, ct);
             return Ok(result);
         }
         catch (InvalidOperationException ex)

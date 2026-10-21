@@ -112,7 +112,7 @@ npm start
 - **🔐 Authentication & Authorization:** Secure JWT token authentication with 30-min access tokens, 7-day refresh tokens, and granular Admin/Operator role permissions.
 - **🛑 Capacity & Storage Type Verification:** Automatic validation rules that prevent storing chemical materials on incompatible shelf types (`GENERAL`, `SOLVENT`, `PAINT`, `FLAMMABLE`, `CORROSIVE`) or exceeding shelf capacity.
 - **🧪 Fictional Demo Inventory:** `DEMO_DATA_ENABLED` seeds a repeatable set of fictional chemicals, batches, stock units, rack addresses, and relocation tasks. It defaults on in Development and off in Production.
-- **📦 Batch-First QR Scanning:** Mandatory scanning of a Batch QR (`BAT-{BatchNo}`) before consuming individual units to enforce strict lot governance.
+- **📦 Batch-First QR Scanning:** Mandatory scanning of a Batch QR (`BAT-{BatchNo}`) before consuming individual units, enforced by the consume API as well as the mobile UI, to enforce strict lot governance.
 - **📨 Asynchronous Critical Stock Alerts:** Each chemical has a `MinStockThreshold` field (default `10`). When consuming or deleting an in-stock unit takes the chemical’s total active-unit count below the threshold, the backend queues a low-stock event and a background worker sends a formatted HTML email. A relocation checks stock but does not reduce the chemical’s total stock. Administrators can set the notification recipient and enable or disable alerts in **Settings → Critical Stock and Notifications**.
 - **🏷️ Configurable QR & Code 128 Labels:** Administrators can choose the default label format in **Settings → Label Format Preference**. QR codes are the default; Code 128 is also available. The backend generates PNG label previews using cross-platform libraries, including in Linux Docker deployments.
 - **📱 Multi-format Mobile Scanning:** The mobile terminal camera reads both QR codes and Code 128 barcodes. Existing payloads remain unchanged: batch labels use `BAT-{BatchNo}`, and demo unit labels use `UNIT-DEMO-UNIT-###`. Units created by the batch workflow use `UNIT-{BatchNo}-{index:D3}`; manually created units retain their stored barcode value.
@@ -193,6 +193,26 @@ This repository applies **baseline security hardening for a public demo**. It is
 - **Emergency admin reset:** set `ADMIN_PASSWORD_RESET=true` together with the new `ADMIN_PASSWORD` for one startup to create the `admin` account if missing or restore it if inactive/roleless, re-hash its password, and revoke its active refresh tokens. Remove the flag immediately afterward; leaving it enabled resets the password and terminates admin sessions on every restart.
 - `scripts/reset-demo.sh` supports public-domain demo hosts as well as localhost. Removing the localhost-only check adds no remotely callable endpoint: a reset still requires host-side execution with Docker access, `DEMO_DATA_ENABLED=true` in both the invoking environment and running backend, and the explicit `--confirm-demo-reset` argument. These checks limit accidental use, but the operator must still restrict the script and its full-database backups to a demo deployment; enabling the flag against production data and confirming will erase business rows.
 
+### Batch-first consume API
+
+`POST /api/units/{barcode}/consume` now requires a JSON body:
+
+```json
+{ "batchBarcode": "BAT-{BatchNo}" }
+```
+
+The server trims the value, requires the `BAT-` prefix case-insensitively, and compares the remaining batch number with the unit's batch using case-insensitive comparison. The body and `batchBarcode` are mandatory; there is no backward compatibility with older bodyless clients. Mobile builds must be rebuilt and redeployed with this contract.
+
+Error codes:
+
+| Code | Meaning |
+|---|---|
+| `BATCH_REQUIRED` | Request body or `batchBarcode` is missing/blank. |
+| `BATCH_BARCODE_INVALID` | Barcode does not use the `BAT-` prefix or has an empty batch number after it. |
+| `BATCH_MISMATCH` | The unit belongs to a different batch; the response does not reveal the unit's actual batch. |
+
+Option A validates server-side consistency between the claimed batch and the unit; it does **not** cryptographically prove that the operator physically scanned the batch label. A client that already knows the batch number can still claim it.
+
 ### Endpoint → role matrix
 
 Unless marked public, API endpoints require an authenticated access token. **Admin** and **Operator** identify application roles. Unlisted verbs/routes are not defined by the API.
@@ -213,7 +233,7 @@ Unless marked public, API endpoints require an authenticated access token. **Adm
 | `/api/addresses` | POST, DELETE `/api/addresses/{id}`, PUT `/api/addresses/{id}/storage-type`, PUT `/api/addresses/{id}/capacity` | Admin |
 | `/api/units`, `/api/units/barcode/{barcode}`, `/api/units/address/{addressId}` | GET | Admin, Operator |
 | `/api/units` | POST, DELETE `/api/units/{barcode}` | Admin |
-| `/api/units/{barcode}/consume` | POST | Admin, Operator |
+| `/api/units/{barcode}/consume` | POST | Admin, Operator; JSON body `batchBarcode` required |
 | `/api/relocation-tasks`, `/api/relocation-tasks/eligible-targets/{unitId}` | GET | Admin, Operator |
 | `/api/relocation-tasks` | POST | Admin, Operator |
 | `/api/relocation-tasks/{id}/complete` | PUT | Admin, Operator |

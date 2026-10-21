@@ -5,6 +5,7 @@ using backend.Hubs;
 using backend.Services.Implementations;
 using backend.Services.Implementations.Notifications;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.EntityFrameworkCore;
 using Moq;
 
 namespace backend.Tests;
@@ -53,12 +54,12 @@ public class BatchUnitServiceTests
         // Arrange
         await using var database = await SqliteTestDatabase.CreateAsync();
         var context = database.Context;
-        var (_, _, _, unit) = await TestData.AddUnitAsync(
+        var (_, batch, _, unit) = await TestData.AddUnitAsync(
             context, expirationDate: DateTime.UtcNow.AddDays(-1));
         var service = new UnitService(context, CreateHub().Object, new LowStockChannel());
 
         // Act
-        var act = () => service.ConsumeAsync(unit.Barcode);
+        var act = () => service.ConsumeAsync(unit.Barcode, $"BAT-{batch.BatchNo}");
 
         // Assert
         await Assert.ThrowsAsync<BusinessRuleException>(act);
@@ -70,14 +71,93 @@ public class BatchUnitServiceTests
         // Arrange
         await using var database = await SqliteTestDatabase.CreateAsync();
         var context = database.Context;
-        var (_, _, _, unit) = await TestData.AddUnitAsync(context, chemicalStopped: true);
+        var (_, batch, _, unit) = await TestData.AddUnitAsync(context, chemicalStopped: true);
         var service = new UnitService(context, CreateHub().Object, new LowStockChannel());
 
         // Act
-        var act = () => service.ConsumeAsync(unit.Barcode);
+        var act = () => service.ConsumeAsync(unit.Barcode, $"BAT-{batch.BatchNo}");
 
         // Assert
         await Assert.ThrowsAsync<BusinessRuleException>(act);
+    }
+
+    [Fact]
+    public async Task Consume_InvalidBatchBarcode_RejectsConsumption()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var (_, _, _, unit) = await TestData.AddUnitAsync(context);
+        var service = new UnitService(context, CreateHub().Object, new LowStockChannel());
+
+        // Act
+        var act = () => service.ConsumeAsync(unit.Barcode, "DEMO-BAT-001");
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("BATCH_BARCODE_INVALID", exception.ErrorCode);
+    }
+
+    [Fact]
+    public async Task Consume_WrongBatch_RejectsWithoutChangingState()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var (_, _, address, unit) = await TestData.AddUnitAsync(context);
+        var originalStatus = unit.Status;
+        var originalAddressId = unit.AddressId;
+        var originalVersion = unit.Version;
+        var originalStockCount = await context.Units.CountAsync(
+            item => item.Status == "InStock" || item.Status == "AVAILABLE");
+        var service = new UnitService(context, CreateHub().Object, new LowStockChannel());
+
+        // Act
+        var act = () => service.ConsumeAsync(unit.Barcode, "BAT-OTHER-BATCH");
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("BATCH_MISMATCH", exception.ErrorCode);
+        Assert.DoesNotContain(unit.Batch.BatchNo, exception.Message, StringComparison.Ordinal);
+        Assert.Equal(originalStatus, unit.Status);
+        Assert.Equal(originalAddressId, unit.AddressId);
+        Assert.Equal(originalVersion, unit.Version);
+        Assert.Equal(originalStockCount, await context.Units.CountAsync(
+            item => item.Status == "InStock" || item.Status == "AVAILABLE"));
+    }
+
+    [Fact]
+    public async Task Consume_CorrectBatchWithWhitespaceAndDifferentCase_IsAccepted()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var (_, batch, _, unit) = await TestData.AddUnitAsync(context);
+        var service = new UnitService(context, CreateHub().Object, new LowStockChannel());
+
+        // Act
+        var result = await service.ConsumeAsync(
+            unit.Barcode, $"  BAT-{batch.BatchNo.ToLowerInvariant()}  ");
+
+        // Assert
+        Assert.Equal("Depleted", result.Status);
+    }
+
+    [Fact]
+    public async Task Consume_BlankBatchBarcode_ReturnsBatchRequired()
+    {
+        // Arrange
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var (_, _, _, unit) = await TestData.AddUnitAsync(context);
+        var service = new UnitService(context, CreateHub().Object, new LowStockChannel());
+
+        // Act
+        var act = () => service.ConsumeAsync(unit.Barcode, "   ");
+
+        // Assert
+        var exception = await Assert.ThrowsAsync<BusinessRuleException>(act);
+        Assert.Equal("BATCH_REQUIRED", exception.ErrorCode);
     }
 
     [Fact]
@@ -86,7 +166,7 @@ public class BatchUnitServiceTests
         // Arrange
         await using var database = await SqliteTestDatabase.CreateAsync();
         var context = database.Context;
-        var (_, _, address, unit) = await TestData.AddUnitAsync(context);
+        var (_, batch, address, unit) = await TestData.AddUnitAsync(context);
         var target = new Address
         {
             Code = $"TARGET-{Guid.NewGuid():N}",
@@ -106,7 +186,7 @@ public class BatchUnitServiceTests
         var service = new UnitService(context, hub.Object, new LowStockChannel());
 
         // Act
-        var result = await service.ConsumeAsync(unit.Barcode);
+        var result = await service.ConsumeAsync(unit.Barcode, $"BAT-{batch.BatchNo}");
 
         // Assert
         Assert.Equal("Depleted", result.Status);

@@ -8,6 +8,6 @@ public interface IUnitService
     Task<List<UnitResponse>> SearchAsync(string? search, long? addressId, int size = 100, CancellationToken ct = default);
     Task<PagedResult<UnitResponse>> GetByAddressIdAsync(long addressId, int page = 1, int pageSize = 50, CancellationToken ct = default);
     Task<UnitResponse> CreateAsync(CreateUnitRequest request, CancellationToken ct = default);
-    Task<UnitResponse> ConsumeAsync(string barcode, CancellationToken ct = default);
+    Task<UnitResponse> ConsumeAsync(string barcode, string? batchBarcode, CancellationToken ct = default);
     Task<bool> DeleteAsync(string barcode, CancellationToken ct = default);
 }
