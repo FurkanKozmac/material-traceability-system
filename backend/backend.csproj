@@ -20,6 +20,7 @@
         <PackageReference Include="BarcodeLib" Version="3.1.5" />
         <PackageReference Include="MailKit" Version="4.17.0" />
         <PackageReference Include="MimeKit" Version="4.17.0" />
+        <PackageReference Include="MiniExcel" Version="1.46.0" />
         <PackageReference Include="System.Security.Cryptography.Pkcs" Version="10.0.13" />
     </ItemGroup>
 
