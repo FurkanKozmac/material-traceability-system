@@ -5,6 +5,7 @@ import api from '../api';
 import { isAdmin, isOperator } from '../auth';
 import { useLanguage } from '../useLanguage';
 import { getLocalizedApiError } from '../apiError';
+import { downloadBlob } from '../download';
 import useSignalR from '../hooks/useSignalR';
 
 const emptyForm = { batchNo: '', supplier: '', initialQuantity: 1, expirationDate: '', chemicalId: '' };
@@ -18,6 +19,7 @@ export default function BatchManagement() {
   const [search, setSearch] = useState('');
   const [message, setMessage] = useState(null);
   const [scanning, setScanning] = useState(false);
+  const [exporting, setExporting] = useState(false);
   const [labelPreview, setLabelPreview] = useState(null);
   const imageInput = useRef(null);
 
@@ -38,6 +40,18 @@ export default function BatchManagement() {
   useSignalR('BatchCreated', () => {
     load().catch(() => setMessage({ type: 'warning', text: t('batchLoadFailed') }));
   });
+
+  const downloadInventoryReport = async () => {
+    setExporting(true);
+    try {
+      const response = await api.get('/inventory/export-excel', { responseType: 'blob' });
+      downloadBlob(response.data, `envanter-denetim-raporu-${new Date().toISOString().slice(0, 10)}.xlsx`);
+    } catch {
+      setMessage({ type: 'error', text: t('inventoryReportFailed') });
+    } finally {
+      setExporting(false);
+    }
+  };
 
   const create = async (event) => {
     event.preventDefault();
@@ -98,7 +112,17 @@ export default function BatchManagement() {
   };
 
   return <Box>
-    <Typography variant="h4" sx={{ mb: 3, fontWeight: 600 }}>{t('batchesTitle')}</Typography>
+    <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 3 }}>
+      <Typography variant="h4" sx={{ fontWeight: 600 }}>{t('batchesTitle')}</Typography>
+      <Button
+        variant="outlined"
+        onClick={downloadInventoryReport}
+        disabled={exporting}
+        startIcon={exporting ? <CircularProgress size={18} /> : null}
+      >
+        {exporting ? t('inventoryReportDownloading') : t('downloadInventoryReport')}
+      </Button>
+    </Box>
     {message && <Alert severity={message.type} sx={{ mb: 2 }}>{String(message.text)}</Alert>}
     <Paper component="form" onSubmit={(event) => { event.preventDefault(); load(); }} sx={{ p: 2, mb: 2, display: 'flex', gap: 1 }}>
       <TextField fullWidth label={t('searchBatch')} placeholder={t('searchBatchPlaceholder')} value={search} onChange={(e) => setSearch(e.target.value)} />

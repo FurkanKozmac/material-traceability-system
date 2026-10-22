@@ -274,6 +274,83 @@ public sealed class AuthorizationEndpointTests
     }
 
     [Fact]
+    public async Task Operator_IsForbidden_FromBulkChemicalImport()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent([1, 2, 3]);
+        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(file, "file", "chemicals.xlsx");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chemicals/bulk-import")
+        {
+            Content = content
+        };
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Admin_CanDownloadChemicalImportTemplate()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/chemicals/excel-template");
+        request.Headers.Add("X-Test-Roles", "Admin");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(new byte[] { 1, 2, 3 }, await response.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
+    public async Task Admin_CanBulkImportChemicals()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent([1, 2, 3]);
+        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(file, "file", "chemicals.xlsx");
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/chemicals/bulk-import")
+        {
+            Content = content
+        };
+        request.Headers.Add("X-Test-Roles", "Admin");
+
+        using var response = await client.SendAsync(request);
+        var result = await response.Content.ReadFromJsonAsync<BulkImportResultDto>();
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.NotNull(result);
+        Assert.Equal(0, result.TotalRows);
+    }
+
+    [Fact]
+    public async Task Operator_CanExportInventoryReport()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/inventory/export-excel");
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        Assert.Equal("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            response.Content.Headers.ContentType?.MediaType);
+        Assert.Equal(new byte[] { 1, 2, 3 }, await response.Content.ReadAsByteArrayAsync());
+    }
+
+    [Fact]
     public async Task DemoSeed_CanSignInWithOperatorRole()
     {
         await using var database = await SqliteTestDatabase.CreateAsync();
@@ -305,6 +382,14 @@ public sealed class AuthorizationEndpointTests
         var chemical = new Mock<IChemicalService>();
         chemical.Setup(service => service.DeleteAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
+        var chemicalExcel = new Mock<IChemicalExcelService>();
+        chemicalExcel.Setup(service => service.CreateTemplateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([1, 2, 3]);
+        chemicalExcel.Setup(service => service.ImportAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new BulkImportResultDto(0, 0, 0, []));
+        var inventoryReport = new Mock<IInventoryReportService>();
+        inventoryReport.Setup(service => service.ExportAuditReportAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([1, 2, 3]);
         var addresses = new Mock<IAddressService>();
         var units = new Mock<IUnitService>();
         units.Setup(service => service.ConsumeAsync(
@@ -377,6 +462,8 @@ public sealed class AuthorizationEndpointTests
                 services.AddControllers().AddApplicationPart(typeof(backend.Controllers.ChemicalController).Assembly);
                 services.AddDbContext<MtsDbContext>(options => options.UseSqlite("Data Source=:memory:"));
                 services.AddSingleton(chemical.Object);
+                services.AddSingleton(chemicalExcel.Object);
+                services.AddSingleton(inventoryReport.Object);
                 services.AddSingleton(addresses.Object);
                 services.AddSingleton(units.Object);
                 services.AddSingleton(settings.Object);
