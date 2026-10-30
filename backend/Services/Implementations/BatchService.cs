@@ -58,13 +58,13 @@ public class BatchService(MtsDbContext context) : IBatchService
             .FirstOrDefaultAsync(c => c.Id == request.ChemicalId, ct);
 
         if (chemical is null)
-            throw new InvalidOperationException("Belirtilen kimyasal bulunamadı!");
+            throw new BusinessRuleException("Belirtilen kimyasal bulunamadı!");
 
         if (chemical.Stopped)
             throw new BusinessRuleException("Durdurulmuş bir kimyasal için yeni parti açılamaz!");
 
         if (await context.Batches.AnyAsync(b => b.BatchNo == request.BatchNo, ct))
-            throw new InvalidOperationException($"'{request.BatchNo}' parti numarası zaten mevcut!");
+            throw new BusinessRuleException($"'{request.BatchNo}' parti numarası zaten mevcut!");
 
         var initialAddress = await context.Addresses
             .AsNoTracking()

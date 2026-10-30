@@ -28,15 +28,8 @@ public class AddressesController(IAddressService addressService) : ControllerBas
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<AddressResponse>> Create(CreateAddressRequest request, CancellationToken ct)
     {
-        try
-        {
-            var address = await addressService.CreateAsync(request, ct);
-            return CreatedAtAction(nameof(GetById), new { id = address.Id }, address);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var address = await addressService.CreateAsync(request, ct);
+        return CreatedAtAction(nameof(GetById), new { id = address.Id }, address);
     }
 
     [HttpPut("{id:long}/storage-type")]

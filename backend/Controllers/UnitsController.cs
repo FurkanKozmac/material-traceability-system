@@ -39,29 +39,15 @@ public class UnitsController(IUnitService unitService) : ControllerBase
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<UnitResponse>> Create(CreateUnitRequest request, CancellationToken ct)
     {
-        try
-        {
-            var unit = await unitService.CreateAsync(request, ct);
-            return CreatedAtAction(nameof(GetByBarcode), new { barcode = unit.Barcode }, unit);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var unit = await unitService.CreateAsync(request, ct);
+        return CreatedAtAction(nameof(GetByBarcode), new { barcode = unit.Barcode }, unit);
     }
 
     [HttpDelete("{barcode}")]
     [Authorize(Roles = "Admin")]
     public async Task<IActionResult> Delete(string barcode, CancellationToken ct)
     {
-        try
-        {
-            return await unitService.DeleteAsync(barcode, ct) ? NoContent() : NotFound();
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        return await unitService.DeleteAsync(barcode, ct) ? NoContent() : NotFound();
     }
 
     [HttpPost("{barcode}/consume")]
@@ -74,14 +60,7 @@ public class UnitsController(IUnitService unitService) : ControllerBase
         if (request is null || string.IsNullOrWhiteSpace(request.BatchBarcode))
             throw new BusinessRuleException("Parti barkodu zorunludur.", "BATCH_REQUIRED");
 
-        try
-        {
-            var result = await unitService.ConsumeAsync(barcode, request.BatchBarcode, ct);
-            return Ok(result);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var result = await unitService.ConsumeAsync(barcode, request.BatchBarcode, ct);
+        return Ok(result);
     }
 }
