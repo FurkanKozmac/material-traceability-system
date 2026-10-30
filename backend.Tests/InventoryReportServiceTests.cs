@@ -110,6 +110,59 @@ public class InventoryReportServiceTests
         Assert.Contains("<x:cols>", sheetXml);
     }
 
+    [Theory]
+    [InlineData("=HYPERLINK(\"http://example.invalid\",\"x\")")]
+    [InlineData("+1+1")]
+    [InlineData("-2+3")]
+    [InlineData("@SUM(1,1)")]
+    public async Task Export_UserSuppliedTextStartingWithFormulaPrefix_IsEscapedAsText(string payload)
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var rack = new Address { Code = payload, StorageType = "GENERAL", MaxCapacity = 100 };
+        context.Addresses.Add(rack);
+        AddBatch(context, payload, "Ad", "GENERAL", 0, payload,
+            DateTime.UtcNow.Date.AddDays(30),
+            (rack, "InStock"));
+        await context.SaveChangesAsync();
+        var service = new InventoryReportService(context);
+
+        var bytes = await service.ExportAuditReportAsync();
+
+        using var stream = new MemoryStream(bytes);
+        var row = Assert.Single(stream.Query(useHeaderRow: true, sheetName: "Envanter")
+            .Cast<IDictionary<string, object>>());
+        Assert.Equal("'" + payload, Convert.ToString(row["Parti No (Batch No)"]));
+        Assert.Equal($"'{payload} - Ad", Convert.ToString(row["Kimyasal Kodu & Adı"]));
+        Assert.Equal("'" + payload, Convert.ToString(row["Bulunduğu Raf / Adres"]));
+
+        using var archive = new ZipArchive(new MemoryStream(bytes), ZipArchiveMode.Read);
+        using var reader = new StreamReader(archive.GetEntry("xl/worksheets/sheet1.xml")!.Open());
+        var sheetXml = await reader.ReadToEndAsync();
+        Assert.DoesNotContain("<x:f>", sheetXml);
+        Assert.DoesNotContain("<f>", sheetXml);
+    }
+
+    [Fact]
+    public async Task Export_UnassignedUnit_KeepsPlainDashPlaceholder()
+    {
+        await using var database = await SqliteTestDatabase.CreateAsync();
+        var context = database.Context;
+        var batch = AddBatch(context, "CHEM-NOADR", "Adressiz", "GENERAL", 0, "LOT-NOADR",
+            DateTime.UtcNow.Date.AddDays(30));
+        batch.Units.Add(new Unit { Barcode = "UNIT-NOADR", Status = "InStock", Version = 1 });
+        batch.InitialQuantity = 1;
+        await context.SaveChangesAsync();
+        var service = new InventoryReportService(context);
+
+        var bytes = await service.ExportAuditReportAsync();
+
+        using var stream = new MemoryStream(bytes);
+        var row = Assert.Single(stream.Query(useHeaderRow: true, sheetName: "Envanter")
+            .Cast<IDictionary<string, object>>());
+        Assert.Equal("-", Convert.ToString(row["Bulunduğu Raf / Adres"]));
+    }
+
     private static Batch AddBatch(
         MtsDbContext context,
         string chemicalCode,
