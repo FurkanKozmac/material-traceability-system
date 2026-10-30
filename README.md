@@ -192,7 +192,9 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-Open `http://localhost`. `DOMAIN` must be `localhost` (or removed, which defaults to `localhost`); otherwise Caddy only serves the configured public name and tries to obtain a public certificate for it. With `localhost`, Caddy uses its own local certificate, so `http://localhost` redirects to `https://localhost` and the browser shows a certificate warning the first time.
+Open `http://localhost`. `DOMAIN` must be `localhost` (or removed, which defaults to `localhost`); otherwise Caddy only serves the configured public name and tries to obtain a public certificate for it. With `localhost`, Caddy uses its own local certificate, so `http://localhost` redirects to `https://localhost` and the browser shows a certificate warning the first time (for command-line checks use `curl -k https://localhost/api/health`).
+
+To sign in as administrator, use the username `admin` with the `ADMIN_PASSWORD` value from your `.env`.
 
 The Compose backend runs in Production mode, where both demo flags default off, so they must be set explicitly. Sign in with the operational account **demo / demo123**. It has the `Operator` role: it can browse inventory, export the inventory Excel report, receive supplier deliveries by creating batches, create and complete relocation tasks, and consume stock. Chemical, address, and stock-unit administration, the chemical Excel template and bulk import, relocation-task cancellation, user management, and settings changes remain Admin-only. Batch creation validates the selected active chemical and available storage capacity. Never use the sample password for an administrator account.
 
