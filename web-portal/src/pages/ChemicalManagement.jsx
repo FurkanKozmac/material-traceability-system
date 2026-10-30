@@ -3,6 +3,7 @@ import {
   Alert,
   Box,
   Button,
+  Chip,
   CircularProgress,
   Dialog,
   DialogActions,
@@ -24,10 +25,17 @@ import api from '../api';
 import { getLocalizedApiError } from '../apiError';
 import { isAdmin } from '../auth';
 import { downloadBlob } from '../download';
+import {
+  MAX_IMPORT_BYTES,
+  MAX_IMPORT_ROWS,
+  canConfirmImport,
+  formatImportSummary,
+  importSeverity as getImportSeverity,
+  rowStatusColor,
+} from '../domain/chemicalImport';
 import { useLanguage } from '../useLanguage';
 
 const emptyForm = { chemicalCode: '', name: '', description: '', msdsUrl: '', storageType: 'GENERAL' };
-const maxImportBytes = 10 * 1024 * 1024;
 const formatFileSize = (bytes) => (
   bytes < 1024 * 1024
     ? `${Math.max(1, Math.ceil(bytes / 1024))} KB`
@@ -45,6 +53,7 @@ export default function ChemicalManagement() {
   const [importFile, setImportFile] = useState(null);
   const [importDragActive, setImportDragActive] = useState(false);
   const [importing, setImporting] = useState(false);
+  const [importPreview, setImportPreview] = useState(null);
   const [importResult, setImportResult] = useState(null);
   const [importError, setImportError] = useState(null);
   const importFileInput = useRef(null);
@@ -62,6 +71,7 @@ export default function ChemicalManagement() {
   const resetImportState = () => {
     setImportFile(null);
     setImportDragActive(false);
+    setImportPreview(null);
     setImportResult(null);
     setImportError(null);
   };
@@ -84,6 +94,7 @@ export default function ChemicalManagement() {
 
   const selectImportFile = (file) => {
     if (importing || !file) return;
+    setImportPreview(null);
     setImportResult(null);
     setImportError(null);
 
@@ -93,7 +104,7 @@ export default function ChemicalManagement() {
       return;
     }
 
-    if (file.size > maxImportBytes) {
+    if (file.size > MAX_IMPORT_BYTES) {
       setImportFile(null);
       setImportError(t('bulkImportFileTooLarge'));
       return;
@@ -127,7 +138,29 @@ export default function ChemicalManagement() {
     }
   };
 
-  const submitImport = async () => {
+  const postImport = async (dryRun) => {
+    const body = new FormData();
+    body.append('file', importFile);
+    try {
+      return (await api.post(`/chemicals/bulk-import${dryRun ? '?dryRun=true' : ''}`, body)).data;
+    } catch (error) {
+      // A real import with invalid rows is rejected as a whole (422) and still carries the row report.
+      if (error.response?.status === 422 && error.response.data?.rows) return error.response.data;
+      throw error;
+    }
+  };
+
+  const showImportError = (error) => {
+    const missingHeaders = error.response?.data?.details?.missingHeaders;
+    const baseMessage = error.response?.status === 413
+      ? t('bulkImportFileTooLarge')
+      : error.response?.status === 429
+        ? t('bulkImportRateLimited')
+        : getLocalizedApiError(error, t, t('bulkImportFailed'));
+    setImportError(missingHeaders?.length ? `${baseMessage} (${missingHeaders.join(', ')})` : baseMessage);
+  };
+
+  const submitPreview = async () => {
     if (!importFile) {
       setImportError(t('bulkImportFileRequired'));
       return;
@@ -135,20 +168,30 @@ export default function ChemicalManagement() {
 
     setImporting(true);
     setImportError(null);
+    setImportPreview(null);
     setImportResult(null);
 
     try {
-      const body = new FormData();
-      body.append('file', importFile);
-      const response = await api.post('/chemicals/bulk-import', body);
-      setImportResult(response.data);
-      if (response.data.successCount > 0) await load();
+      setImportPreview(await postImport(true));
     } catch (error) {
-      const missingHeaders = error.response?.data?.details?.missingHeaders;
-      const baseMessage = error.response?.status === 413
-        ? t('bulkImportFileTooLarge')
-        : getLocalizedApiError(error, t, t('bulkImportFailed'));
-      setImportError(missingHeaders?.length ? `${baseMessage} (${missingHeaders.join(', ')})` : baseMessage);
+      showImportError(error);
+    } finally {
+      setImporting(false);
+    }
+  };
+
+  const confirmImport = async () => {
+    if (!canConfirmImport(importPreview)) return;
+
+    setImporting(true);
+    setImportError(null);
+
+    try {
+      const result = await postImport(false);
+      setImportResult(result);
+      if (result.committed && result.insertCount > 0) await load();
+    } catch (error) {
+      showImportError(error);
     } finally {
       setImporting(false);
     }
@@ -200,15 +243,10 @@ export default function ChemicalManagement() {
     }
   };
 
-  const importSummary = importResult
-    ? t('bulkImportSummary')
-      .replace('{total}', importResult.totalRows)
-      .replace('{success}', importResult.successCount)
-      .replace('{failed}', importResult.failedCount)
-    : '';
-  const importSeverity = importResult?.failedCount === 0
-    ? 'success'
-    : importResult?.successCount > 0 ? 'warning' : 'error';
+  const importReport = importResult || importPreview;
+  const importSummary = importReport ? formatImportSummary(t('bulkImportSummary'), importReport) : '';
+  const importSeverity = getImportSeverity(importReport);
+  const importStatusLabel = (status) => t(`importStatus${status}`);
 
   return <Box>
     <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2, flexWrap: 'wrap', mb: 3 }}>
@@ -243,7 +281,7 @@ export default function ChemicalManagement() {
     <Dialog open={importOpen} onClose={closeImportDialog} fullWidth maxWidth="md">
       <DialogTitle>{t('bulkImportTitle')}</DialogTitle>
       <DialogContent dividers>
-        {!importResult && <>
+        {!importReport && <>
           <Alert severity="info" sx={{ mb: 2 }}>{t('bulkImportSampleWarning')}</Alert>
           {importError && <Alert severity="error" sx={{ mb: 2 }}>{importError}</Alert>}
           <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>{t('bulkImportDescription')}</Typography>
@@ -279,7 +317,7 @@ export default function ChemicalManagement() {
             <Typography variant="h6">{t('bulkImportDrop')}</Typography>
             <Typography variant="body2" color="text.secondary">{t('bulkImportDropHint')}</Typography>
             <Typography variant="caption" color="text.secondary" display="block" sx={{ mt: 1 }}>
-              {t('bulkImportFileType')} · 10 MB
+              {t('bulkImportFileType')} · {MAX_IMPORT_BYTES / (1024 * 1024)} MB · {MAX_IMPORT_ROWS} {t('bulkImportRowsUnit')}
             </Typography>
           </Box>
           <input
@@ -299,48 +337,87 @@ export default function ChemicalManagement() {
             </Button>
           </Box>}
         </>}
-        {importResult && <>
-          <Alert severity={importSeverity} sx={{ mb: 2 }}>{importSummary}</Alert>
-          {importResult.failedCount === 0
-            ? <Typography color="text.secondary">{t('bulkImportAllSuccess')}</Typography>
-            : <>
-              <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>{t('bulkImportErrorsTitle')}</Typography>
-              <TableContainer sx={{ maxHeight: 320 }}>
-                <Table stickyHeader size="small">
-                  <TableHead>
-                    <TableRow>
-                      <TableCell>{t('importRow')}</TableCell>
-                      <TableCell>{t('importField')}</TableCell>
-                      <TableCell>{t('importErrorLabel')}</TableCell>
-                      <TableCell>{t('importValue')}</TableCell>
-                    </TableRow>
-                  </TableHead>
-                  <TableBody>
-                    {(importResult.errors || []).map((error, index) => <TableRow key={`${error.rowNumber}-${error.field}-${index}`}>
-                      <TableCell>{error.rowNumber}</TableCell>
-                      <TableCell>{error.field}</TableCell>
-                      <TableCell>{error.message}</TableCell>
-                      <TableCell>{error.value || '-'}</TableCell>
-                    </TableRow>)}
-                  </TableBody>
-                </Table>
-              </TableContainer>
-            </>}
+        {importReport && <>
+          {importError && <Alert severity="error" sx={{ mb: 2 }}>{importError}</Alert>}
+          <Alert severity={importSeverity} sx={{ mb: 2 }}>
+            <Typography variant="subtitle2">
+              {importResult
+                ? (importResult.committed ? t('bulkImportCommitted') : t('bulkImportNotCommitted'))
+                : t('bulkImportPreviewTitle')}
+            </Typography>
+            {importSummary}
+          </Alert>
+          {!importResult && importPreview.failedCount > 0 && <Typography color="text.secondary" sx={{ mb: 2 }}>{t('bulkImportFixErrors')}</Typography>}
+          {!importResult && importPreview.failedCount === 0 && importPreview.insertCount === 0 && <Typography color="text.secondary" sx={{ mb: 2 }}>{t('bulkImportNothingToAdd')}</Typography>}
+          {importReport.errors?.length > 0 && <>
+            <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>{t('bulkImportErrorsTitle')}</Typography>
+            <TableContainer sx={{ maxHeight: 240, mb: 2 }}>
+              <Table stickyHeader size="small">
+                <TableHead>
+                  <TableRow>
+                    <TableCell>{t('importRow')}</TableCell>
+                    <TableCell>{t('importField')}</TableCell>
+                    <TableCell>{t('importErrorLabel')}</TableCell>
+                    <TableCell>{t('importValue')}</TableCell>
+                  </TableRow>
+                </TableHead>
+                <TableBody>
+                  {importReport.errors.map((error, index) => <TableRow key={`${error.rowNumber}-${error.field}-${index}`}>
+                    <TableCell>{error.rowNumber}</TableCell>
+                    <TableCell>{error.field}</TableCell>
+                    <TableCell>{error.message}</TableCell>
+                    <TableCell>{error.value || '-'}</TableCell>
+                  </TableRow>)}
+                </TableBody>
+              </Table>
+            </TableContainer>
+          </>}
+          <Typography variant="subtitle1" sx={{ fontWeight: 600, mb: 1 }}>{t('bulkImportRowsTitle')}</Typography>
+          <TableContainer sx={{ maxHeight: 280 }}>
+            <Table stickyHeader size="small">
+              <TableHead>
+                <TableRow>
+                  <TableCell>{t('importRow')}</TableCell>
+                  <TableCell>{t('code')}</TableCell>
+                  <TableCell>{t('name')}</TableCell>
+                  <TableCell>{t('status')}</TableCell>
+                </TableRow>
+              </TableHead>
+              <TableBody>
+                {(importReport.rows || []).map((row) => <TableRow key={row.rowNumber}>
+                  <TableCell>{row.rowNumber}</TableCell>
+                  <TableCell>{row.chemicalCode || '-'}</TableCell>
+                  <TableCell>{row.name || '-'}</TableCell>
+                  <TableCell><Chip size="small" color={rowStatusColor(row.status)} label={importStatusLabel(row.status)} /></TableCell>
+                </TableRow>)}
+              </TableBody>
+            </Table>
+          </TableContainer>
         </>}
       </DialogContent>
       <DialogActions>
         {importResult ? <>
           <Button onClick={startNewImport}>{t('bulkImportNewFile')}</Button>
           <Button variant="contained" onClick={closeImportDialog}>{t('close')}</Button>
+        </> : importPreview ? <>
+          <Button onClick={startNewImport} disabled={importing}>{t('bulkImportNewFile')}</Button>
+          <Button
+            variant="contained"
+            onClick={confirmImport}
+            disabled={!canConfirmImport(importPreview) || importing}
+            startIcon={importing ? <CircularProgress size={18} /> : null}
+          >
+            {importing ? t('bulkImportUploading') : t('bulkImportConfirm')}
+          </Button>
         </> : <>
           <Button onClick={closeImportDialog} disabled={importing}>{t('cancel')}</Button>
           <Button
             variant="contained"
-            onClick={submitImport}
+            onClick={submitPreview}
             disabled={!importFile || importing}
             startIcon={importing ? <CircularProgress size={18} /> : null}
           >
-            {importing ? t('bulkImportUploading') : t('bulkImportUpload')}
+            {importing ? t('bulkImportPreviewing') : t('bulkImportPreview')}
           </Button>
         </>}
       </DialogActions>

@@ -10,28 +10,32 @@ using backend.DTOs;
 using backend.Entities;
 using backend.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using MiniExcelLibs;
 using MiniExcelLibs.OpenXml;
 
 namespace backend.Services.Implementations.Excel;
 
-public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelService
+public sealed class ChemicalExcelService(MtsDbContext context, IOptions<ExcelImportOptions> options) : IChemicalExcelService
 {
-    private const int MaxFileBytes = 10 * 1024 * 1024;
-    private const int MaxUncompressedBytes = 100 * 1024 * 1024;
-    private const int MaxImportRows = 10_000;
     private const int MaxChemicalCodeLength = 50;
     private const int MaxChemicalNameLength = 200;
+    private const int MaxDescriptionLength = 2000;
+    private const int MaxMinStockThreshold = 1_000_000;
     private const int DefaultMinStockThreshold = 10;
 
     private const string DataSheetName = "Kimyasallar";
     private const string GuideSheetName = "Kılavuz";
-    private const string CodeField = "Kimyasal Kodu *";
-    private const string NameField = "Kimyasal Adı *";
-    private const string StorageField = "Depolama Tipi *";
-    private const string ThresholdField = "Kritik Stok Eşiği";
-    private const string DescriptionField = "Açıklama / İSG Notu";
+    private const string CodeField = ChemicalExcelColumns.Code;
+    private const string NameField = ChemicalExcelColumns.Name;
+    private const string StorageField = ChemicalExcelColumns.StorageType;
+    private const string ThresholdField = ChemicalExcelColumns.MinStockThreshold;
+    private const string DescriptionField = ChemicalExcelColumns.Description;
     private const string StorageTypeList = "GENERAL, SOLVENT, PAINT, FLAMMABLE, CORROSIVE";
+
+    private const string ContentTypesEntryName = "[Content_Types].xml";
+    private const string XlsxMainContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml";
+    private static readonly byte[] ZipLocalFileHeader = [0x50, 0x4B, 0x03, 0x04];
 
     private static readonly Dictionary<string, string[]> HeaderAliases = new()
     {
@@ -45,6 +49,8 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
     private static readonly Dictionary<string, string> HeaderLookup = BuildHeaderLookup();
     private static readonly string[] RequiredFields = [CodeField, NameField, StorageField];
     private static readonly string[] FieldOrder = [CodeField, NameField, StorageField, ThresholdField, DescriptionField];
+
+    private ExcelImportOptions Limits => options.Value;
 
     public async Task<byte[]> CreateTemplateAsync(CancellationToken ct = default)
     {
@@ -64,9 +70,12 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
         {
             new() { Topic = "Zorunlu alanlar", Description = "Kimyasal Kodu *, Kimyasal Adı *, Depolama Tipi *" },
             new() { Topic = "Geçerli depolama tipleri", Description = StorageTypeList },
-            new() { Topic = "Kritik stok eşiği", Description = "Boş bırakılırsa 10 kabul edilir. 0 veya daha büyük bir tam sayı olmalıdır." },
+            new() { Topic = "Kritik stok eşiği", Description = $"Boş bırakılırsa 10 kabul edilir. 0 ile {MaxMinStockThreshold:N0} arasında bir tam sayı olmalıdır." },
+            new() { Topic = "Uzunluk sınırları", Description = $"Kod en fazla {MaxChemicalCodeLength}, ad en fazla {MaxChemicalNameLength}, açıklama en fazla {MaxDescriptionLength} karakter." },
+            new() { Topic = "Kayıtlı kodlar", Description = "Sistemde zaten kayıtlı kodlar güncellenmez; \"atlandı\" olarak raporlanır." },
+            new() { Topic = "Hep ya hiç", Description = "Herhangi bir satırda hata varsa hiçbir satır kaydedilmez. Önce önizleme ile kontrol edin." },
             new() { Topic = "Örnek satır", Description = "Kimyasallar sayfasındaki örnek satırı içe aktarmadan önce silin veya kendi verinizle değiştirin." },
-            new() { Topic = "Dosya biçimi", Description = "Yalnızca .xlsx kabul edilir. En fazla 10 MB ve 10.000 veri satırı işlenir." }
+            new() { Topic = "Dosya biçimi", Description = $"Yalnızca .xlsx kabul edilir (.xlsm, .xls ve .csv reddedilir). En fazla {FormatMegabytes(Limits.MaxFileBytes)} MB ve {Limits.MaxRows:N0} veri satırı işlenir. Formüller çalıştırılmaz." }
         };
 
         var sheets = new Dictionary<string, object>
@@ -84,21 +93,15 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
         return stream.ToArray();
     }
 
-    public async Task<BulkImportResultDto> ImportAsync(Stream stream, CancellationToken ct = default)
+    public async Task<BulkImportResultDto> ImportAsync(Stream stream, bool dryRun = false, CancellationToken ct = default)
     {
-        await using var buffer = new MemoryStream();
-        await stream.CopyToAsync(buffer, ct);
-
-        if (buffer.Length == 0)
-            throw new BusinessRuleException("Excel dosyası gereklidir.", "EXCEL_FILE_REQUIRED");
-        if (buffer.Length > MaxFileBytes)
-            throw new BusinessRuleException("Excel dosyası en fazla 10 MB olabilir.", "EXCEL_FILE_TOO_LARGE");
+        await using var buffer = await ReadBoundedAsync(stream, ct);
 
         try
         {
-            ValidateArchive(buffer);
+            ValidatePackage(buffer);
             var sheetName = ResolveDataSheet(buffer);
-            return await ReadAndImportRowsAsync(buffer, sheetName, ct);
+            return await ReadAndImportRowsAsync(buffer, sheetName, dryRun, ct);
         }
         catch (BusinessRuleException)
         {
@@ -112,9 +115,40 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
         }
     }
 
+    private async Task<MemoryStream> ReadBoundedAsync(Stream stream, CancellationToken ct)
+    {
+        var maxBytes = Limits.MaxFileBytes;
+        var buffer = new MemoryStream();
+        var chunk = new byte[81920];
+        int read;
+
+        while ((read = await stream.ReadAsync(chunk, ct)) > 0)
+        {
+            if (buffer.Length + read > maxBytes)
+            {
+                await buffer.DisposeAsync();
+                throw new BusinessRuleException(
+                    $"Excel dosyası en fazla {FormatMegabytes(maxBytes)} MB olabilir.",
+                    "EXCEL_FILE_TOO_LARGE");
+            }
+
+            buffer.Write(chunk, 0, read);
+        }
+
+        if (buffer.Length == 0)
+        {
+            await buffer.DisposeAsync();
+            throw new BusinessRuleException("Excel dosyası gereklidir.", "EXCEL_FILE_REQUIRED");
+        }
+
+        buffer.Position = 0;
+        return buffer;
+    }
+
     private async Task<BulkImportResultDto> ReadAndImportRowsAsync(
         MemoryStream buffer,
         string sheetName,
+        bool dryRun,
         CancellationToken ct)
     {
         var existingCodes = (await context.Chemicals
@@ -126,10 +160,12 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
 
         var seenCodes = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
         var errors = new List<ExcelRowErrorDto>();
-        var failedRows = new HashSet<int>();
+        var resultRows = new List<ExcelImportRowDto>();
         var validChemicals = new List<Chemical>();
         Dictionary<string, string>? columns = null;
         var totalRows = 0;
+        var skippedCount = 0;
+        var failedCount = 0;
         var rowNumber = 1;
 
         buffer.Position = 0;
@@ -155,10 +191,10 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
                 continue;
 
             totalRows++;
-            if (totalRows > MaxImportRows)
+            if (totalRows > Limits.MaxRows)
             {
                 throw new BusinessRuleException(
-                    $"Bir seferde en fazla {MaxImportRows:N0} satır içe aktarılabilir.",
+                    $"Bir seferde en fazla {Limits.MaxRows:N0} satır içe aktarılabilir.",
                     "IMPORT_ROW_LIMIT_EXCEEDED");
             }
 
@@ -171,7 +207,6 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
             void AddError(string field, string message, string? value = null)
             {
                 rowHasError = true;
-                failedRows.Add(rowNumber);
                 errors.Add(new ExcelRowErrorDto(rowNumber, field, message, value));
             }
 
@@ -197,11 +232,6 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
                 else
                 {
                     seenCodes[code] = rowNumber;
-                }
-
-                if (existingCodes.Contains(code))
-                {
-                    AddError(CodeField, "Bu kimyasal kodu sistemde zaten kayıtlı.", code);
                 }
             }
 
@@ -244,18 +274,39 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
                 AddError(ThresholdField, thresholdError!, ToText(GetCell(row, columns, ThresholdField)));
             }
 
-            if (rowHasError)
-                continue;
-
-            validChemicals.Add(new Chemical
+            if (description is { Length: > MaxDescriptionLength })
             {
-                Name = name!,
-                ChemicalCode = code!,
-                Description = description,
-                StorageType = storageType,
-                MinStockThreshold = threshold,
-                Stopped = false
-            });
+                AddError(DescriptionField,
+                    $"Açıklama en fazla {MaxDescriptionLength} karakter olabilir.");
+            }
+
+            string status;
+            if (rowHasError)
+            {
+                failedCount++;
+                status = ExcelImportRowStatus.Error;
+            }
+            else if (existingCodes.Contains(code!))
+            {
+                // Existing chemicals are never updated (no upsert); re-importing the same file is idempotent.
+                skippedCount++;
+                status = ExcelImportRowStatus.Skip;
+            }
+            else
+            {
+                status = ExcelImportRowStatus.Insert;
+                validChemicals.Add(new Chemical
+                {
+                    Name = name!,
+                    ChemicalCode = code!,
+                    Description = description,
+                    StorageType = storageType,
+                    MinStockThreshold = threshold,
+                    Stopped = false
+                });
+            }
+
+            resultRows.Add(new ExcelImportRowDto(rowNumber, code, name, status));
         }
 
         if (columns is null || totalRows == 0)
@@ -265,7 +316,9 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
                 "EMPTY_EXCEL_FILE");
         }
 
-        if (validChemicals.Count > 0)
+        // All-or-nothing: a single invalid row means nothing is written.
+        var commit = !dryRun && failedCount == 0;
+        if (commit && validChemicals.Count > 0)
         {
             await using var transaction = await context.Database.BeginTransactionAsync(IsolationLevel.ReadCommitted, ct);
             try
@@ -277,6 +330,7 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
             catch (DbUpdateException)
             {
                 await transaction.RollbackAsync(ct);
+                context.ChangeTracker.Clear();
                 throw new BusinessRuleException(
                     "İçe aktarma sırasında bir kimyasal kodu başka bir işlem tarafından eklendi. Lütfen tekrar deneyin.",
                     "IMPORT_CONFLICT");
@@ -289,9 +343,13 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
             .ToList();
 
         return new BulkImportResultDto(
+            dryRun,
+            commit,
             totalRows,
             validChemicals.Count,
-            failedRows.Count,
+            skippedCount,
+            failedCount,
+            resultRows,
             orderedErrors);
     }
 
@@ -339,31 +397,113 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
         return dataSheet ?? firstSheet!;
     }
 
-    private static void ValidateArchive(MemoryStream buffer)
+    /// <summary>
+    /// Verifies the upload is a macro-free .xlsx package without trusting the file name:
+    /// ZIP signature, OOXML spreadsheet content type, no VBA project, and bounded decompression.
+    /// Zip-bomb guard: entry count and the sum of declared uncompressed sizes are checked from the central
+    /// directory headers only, before any entry is opened. ZipArchive never inflates an entry past its
+    /// declared length (covered by a test), so a forged header cannot expand beyond the cap.
+    /// </summary>
+    private void ValidatePackage(MemoryStream buffer)
     {
+        if (!HasZipSignature(buffer))
+        {
+            throw new BusinessRuleException(
+                "Dosya geçerli bir .xlsx çalışma kitabı değil. .xls, .csv veya yeniden adlandırılmış dosyalar kabul edilmez.",
+                "INVALID_EXCEL_FILE");
+        }
+
         buffer.Position = 0;
         try
         {
             using var archive = new ZipArchive(buffer, ZipArchiveMode.Read, leaveOpen: true);
-            long totalUncompressedBytes = 0;
 
+            if (archive.Entries.Count > Limits.MaxArchiveEntries)
+                throw UncompressedLimitExceeded();
+
+            long declaredBytes = 0;
             foreach (var entry in archive.Entries)
             {
-                if (entry.Length > MaxUncompressedBytes - totalUncompressedBytes)
-                {
-                    throw new BusinessRuleException(
-                        "Excel dosyasının açılmış boyutu güvenli sınırı aşıyor.",
-                        "INVALID_EXCEL_FILE");
-                }
+                if (entry.Length > Limits.MaxUncompressedBytes - declaredBytes)
+                    throw UncompressedLimitExceeded();
 
-                totalUncompressedBytes += entry.Length;
+                declaredBytes += entry.Length;
+
+                if (entry.FullName.EndsWith("vbaProject.bin", StringComparison.OrdinalIgnoreCase))
+                    throw MacroFileNotAllowed();
             }
+
+            ValidateContentTypes(archive);
         }
         finally
         {
             buffer.Position = 0;
         }
     }
+
+    private static bool HasZipSignature(MemoryStream buffer)
+    {
+        if (buffer.Length < ZipLocalFileHeader.Length)
+            return false;
+
+        var bytes = buffer.GetBuffer();
+        return bytes.AsSpan(0, ZipLocalFileHeader.Length).SequenceEqual(ZipLocalFileHeader);
+    }
+
+    private static void ValidateContentTypes(ZipArchive archive)
+    {
+        var entry = archive.GetEntry(ContentTypesEntryName)
+            ?? throw new BusinessRuleException(
+                "Dosya geçerli bir .xlsx çalışma kitabı değil.",
+                "INVALID_EXCEL_FILE");
+
+        var settings = new XmlReaderSettings
+        {
+            DtdProcessing = DtdProcessing.Prohibit,
+            XmlResolver = null,
+            MaxCharactersInDocument = 1024 * 1024
+        };
+
+        var hasSpreadsheetMainPart = false;
+        using (var stream = entry.Open())
+        using (var reader = XmlReader.Create(stream, settings))
+        {
+            while (reader.Read())
+            {
+                if (reader.NodeType != XmlNodeType.Element)
+                    continue;
+
+                var contentType = reader.GetAttribute("ContentType");
+                if (contentType is null)
+                    continue;
+
+                if (contentType.Contains("macroEnabled", StringComparison.OrdinalIgnoreCase) ||
+                    contentType.Contains("vbaProject", StringComparison.OrdinalIgnoreCase))
+                {
+                    throw MacroFileNotAllowed();
+                }
+
+                if (string.Equals(contentType, XlsxMainContentType, StringComparison.OrdinalIgnoreCase))
+                    hasSpreadsheetMainPart = true;
+            }
+        }
+
+        if (!hasSpreadsheetMainPart)
+        {
+            throw new BusinessRuleException(
+                "Dosya geçerli bir .xlsx çalışma kitabı değil.",
+                "INVALID_EXCEL_FILE");
+        }
+    }
+
+    private static BusinessRuleException UncompressedLimitExceeded() =>
+        new("Excel dosyasının açılmış boyutu güvenli sınırı aşıyor.", "INVALID_EXCEL_FILE");
+
+    private static BusinessRuleException MacroFileNotAllowed() =>
+        new("Makro içeren Excel dosyaları (.xlsm) kabul edilmez. Lütfen .xlsx olarak kaydedin.", "MACRO_FILE_NOT_ALLOWED");
+
+    private static string FormatMegabytes(long bytes) =>
+        (bytes / (1024d * 1024d)).ToString("0.#", CultureInfo.InvariantCulture);
 
     private static Dictionary<string, string> BuildColumnMap(IDictionary<string, object?> headerRow)
     {
@@ -449,7 +589,7 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
     {
         threshold = DefaultMinStockThreshold;
         error = null;
-        const string thresholdError = "Kritik stok eşiği 0 veya daha büyük bir tam sayı olmalıdır.";
+        var thresholdError = $"Kritik stok eşiği 0 ile {MaxMinStockThreshold:N0} arasında bir tam sayı olmalıdır.";
 
         if (value is null || string.IsNullOrWhiteSpace(ToText(value)))
             return true;
@@ -458,7 +598,7 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
         {
             if (double.IsNaN(doubleValue) || double.IsInfinity(doubleValue) ||
                 doubleValue != Math.Truncate(doubleValue) ||
-                doubleValue < 0 || doubleValue > int.MaxValue)
+                doubleValue < 0 || doubleValue > MaxMinStockThreshold)
             {
                 error = thresholdError;
                 return false;
@@ -486,7 +626,7 @@ public sealed class ChemicalExcelService(MtsDbContext context) : IChemicalExcelS
 
         if (numericValue != decimal.Truncate(numericValue) ||
             numericValue < 0 ||
-            numericValue > int.MaxValue)
+            numericValue > MaxMinStockThreshold)
         {
             error = thresholdError;
             return false;

@@ -92,6 +92,10 @@ builder.Services.AddRateLimiter(options =>
     var safetyAssistantLimit = builder.Configuration.GetValue("RateLimiting:SafetyAssistant:PermitLimit", 10);
     var safetyAssistantWindowSeconds = builder.Configuration.GetValue("RateLimiting:SafetyAssistant:WindowSeconds", 60);
     options.AddPolicy("safety-assistant", context => LoginRateLimitPartition.Create(context, safetyAssistantLimit, safetyAssistantWindowSeconds));
+
+    var excelImportLimit = builder.Configuration.GetValue("RateLimiting:ExcelImport:PermitLimit", 5);
+    var excelImportWindowSeconds = builder.Configuration.GetValue("RateLimiting:ExcelImport:WindowSeconds", 60);
+    options.AddPolicy("excel-import", context => LoginRateLimitPartition.Create(context, excelImportLimit, excelImportWindowSeconds));
 });
 
 // PostgreSQL Veritabanı
@@ -117,6 +121,7 @@ builder.Services.AddScoped<IPasswordHasher<User>, PasswordHasher<User>>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IUserService, UserService>();
 builder.Services.AddScoped<IChemicalService, ChemicalService>();
+builder.Services.Configure<ExcelImportOptions>(builder.Configuration.GetSection(ExcelImportOptions.SectionName));
 builder.Services.AddScoped<IChemicalExcelService, ChemicalExcelService>();
 builder.Services.AddScoped<IInventoryReportService, InventoryReportService>();
 builder.Services.AddScoped<IUnitService, UnitService>();

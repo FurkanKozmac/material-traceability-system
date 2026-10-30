@@ -54,10 +54,10 @@ public sealed class InventoryReportService(MtsDbContext context) : IInventoryRep
         var reportRows = sourceRows
             .Select(row => new InventoryReportRow
             {
-                BatchNo = row.BatchNo,
-                Chemical = $"{row.ChemicalCode} - {row.ChemicalName}",
-                StorageType = row.StorageType,
-                Address = row.AddressCode ?? "-",
+                BatchNo = SpreadsheetCellEscaper.Escape(row.BatchNo),
+                Chemical = SpreadsheetCellEscaper.Escape($"{row.ChemicalCode} - {row.ChemicalName}"),
+                StorageType = SpreadsheetCellEscaper.Escape(row.StorageType),
+                Address = row.AddressCode is null ? "-" : SpreadsheetCellEscaper.Escape(row.AddressCode),
                 Quantity = row.Quantity,
                 ExpirationDate = row.ExpirationDate,
                 Status = DetermineStatus(

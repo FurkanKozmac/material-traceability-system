@@ -1,15 +1,17 @@
 using backend.Common.Exceptions;
+using backend.Common.Security;
 using backend.Services.Interfaces;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.RateLimiting;
 
 namespace backend.Controllers;
 
 [ApiController]
 [Route("api/chemicals")]
+[Authorize(Roles = "Admin")]
 public class ChemicalExcelController(IChemicalExcelService chemicalExcelService) : ControllerBase
 {
-    private const long MaxUploadBytes = 10 * 1024 * 1024;
     private const string XlsxContentType = "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet";
 
     [HttpGet("excel-template")]
@@ -20,19 +22,23 @@ public class ChemicalExcelController(IChemicalExcelService chemicalExcelService)
         return File(content, XlsxContentType, "kimyasal-toplu-yukleme-sablonu.xlsx");
     }
 
+    /// <summary>
+    /// Imports chemicals from an .xlsx file. With <c>dryRun=true</c> only validates and previews; nothing is written.
+    /// A real import is all-or-nothing: if any row is invalid, no row is saved and 422 is returned with the report.
+    /// </summary>
     [HttpPost("bulk-import")]
-    [Authorize(Roles = "Admin")]
+    [EnableRateLimiting("excel-import")]
     [Consumes("multipart/form-data")]
-    [RequestSizeLimit(MaxUploadBytes)]
-    [RequestFormLimits(MultipartBodyLengthLimit = MaxUploadBytes)]
-    public async Task<IActionResult> BulkImport([FromForm] IFormFile? file, CancellationToken ct)
+    [TypeFilter(typeof(ExcelUploadLimitsFilter))]
+    public async Task<IActionResult> BulkImport(
+        [FromForm] IFormFile? file,
+        [FromQuery] bool dryRun = false,
+        CancellationToken ct = default)
     {
         if (file is null || file.Length == 0)
             throw new BusinessRuleException("Excel dosyası gereklidir.", "EXCEL_FILE_REQUIRED");
 
-        if (file.Length > MaxUploadBytes)
-            throw new BusinessRuleException("Excel dosyası en fazla 10 MB olabilir.", "EXCEL_FILE_TOO_LARGE");
-
+        // The extension is only an early hint; the service decides by inspecting the file content.
         if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
         {
             throw new BusinessRuleException(
@@ -41,7 +47,10 @@ public class ChemicalExcelController(IChemicalExcelService chemicalExcelService)
         }
 
         await using var stream = file.OpenReadStream();
-        var result = await chemicalExcelService.ImportAsync(stream, ct);
-        return Ok(result);
+        var result = await chemicalExcelService.ImportAsync(stream, dryRun, ct);
+
+        return !dryRun && result.FailedCount > 0
+            ? UnprocessableEntity(result)
+            : Ok(result);
     }
 }
