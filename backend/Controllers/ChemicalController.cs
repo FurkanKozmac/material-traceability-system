@@ -32,15 +32,8 @@ public class ChemicalController(IChemicalService chemicalService) : ControllerBa
     [Authorize(Roles = "Admin")]
     public async Task<ActionResult<ChemicalResponse>> Create(CreateChemicalRequest request, CancellationToken ct)
     {
-        try
-        {
-            var result = await chemicalService.CreateAsync(request, ct);
-            return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        var result = await chemicalService.CreateAsync(request, ct);
+        return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
     }
 
     [HttpPut("{id:long}")]

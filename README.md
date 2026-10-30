@@ -103,6 +103,7 @@ npm start
 - **🧪 Fictional Demo Inventory:** `DEMO_DATA_ENABLED` seeds a repeatable set of fictional chemicals, batches, stock units, rack addresses, and relocation tasks. It defaults on in Development and off in Production.
 - **📦 Batch-First QR Scanning:** Mandatory scanning of a Batch QR (`BAT-{BatchNo}`) before consuming individual units, enforced by the consume API as well as the mobile UI, to enforce strict lot governance.
 - **📨 Asynchronous Critical Stock Alerts:** Each chemical has a `MinStockThreshold` field (default `10`). When consuming or deleting an in-stock unit takes the chemical’s total active-unit count below the threshold, the backend queues a low-stock event and a background worker sends a formatted HTML email. A relocation checks stock but does not reduce the chemical’s total stock. Administrators can set the notification recipient and enable or disable alerts in **Settings → Critical Stock and Notifications**.
+- **📊 Dashboard Alerts:** The dashboard lists in-stock batches that expire within 30 days and chemicals whose active-unit count is below `MinStockThreshold` (`GET /api/dashboard/alerts`). Each list shows at most 10 rows together with the total (for example `10 / 14`). The low-stock count includes units that are still in stock even if their batch has expired, matching the email alert.
 - **🏷️ Configurable QR & Code 128 Labels:** Administrators can choose the default label format in **Settings → Label Format Preference**. QR codes are the default; Code 128 is also available. The backend generates PNG label previews using cross-platform libraries, including in Linux Docker deployments.
 - **📱 Multi-format Mobile Scanning:** The mobile terminal camera reads both QR codes and Code 128 barcodes. Existing payloads remain unchanged: batch labels use `BAT-{BatchNo}`, and demo unit labels use `UNIT-DEMO-UNIT-###`. Units created by the batch workflow use `UNIT-{BatchNo}-{index:D3}`; manually created units retain their stored barcode value.
 - **🔄 Dual-code Relocation Tasks:** Relocation tasks planned on the web dashboard require warehouse operators to scan both the physical Unit code and the target Address QR (`ADR-{Code}`) on the mobile terminal.
@@ -133,9 +134,11 @@ PUT  /api/settings/notifications
 POST /api/settings/test-alert-email
 ```
 
-The test endpoint sends an email immediately to the configured recipient. In Docker Compose, Mailpit captures outgoing messages for local inspection at `http://localhost:8025`; it does not deliver them to an external mailbox. SMTP defaults are in `backend/appsettings.json`, and Compose overrides the host to `mailpit`. For local backend runs, start a Mailpit instance reachable at `localhost:1025`.
+The test endpoint sends an email immediately to the configured recipient.
 
-`.env.example` leaves `SMTP_HOST` blank. Compose then falls back to `localhost:1025` inside the backend container; the live deployment has no SMTP relay there, so notification preference reads/updates still work, while the Admin test-email endpoint returns HTTP 503 with an SMTP configuration message. Configure a real SMTP relay for live email delivery. For local email testing, start the Mailpit `dev` profile and set `SMTP_HOST=mailpit`. Low-stock email failures are logged by the background worker and do not terminate it.
+`.env.example` leaves `SMTP_HOST` blank, and Compose passes the blank value to the backend, which means email is not configured. Notification preference reads/updates still work, low-stock emails are skipped (the background worker logs one "SMTP not configured" warning and then skips silently), and the Admin test-email endpoint returns HTTP 503 with an SMTP configuration message.
+
+To try email locally, set `SMTP_HOST=mailpit` (port `1025`) in `.env` and start the `dev` profile with `docker compose --profile dev up -d --build`. Mailpit captures outgoing messages at `http://localhost:8025` and does not deliver them to an external mailbox. When running the backend with `dotnet run`, the defaults in `backend/appsettings.json` point to a Mailpit instance at `localhost:1025`. If an SMTP relay is configured but fails, the error is logged and the background worker keeps running.
 
 The low-stock event is published to an in-memory `System.Threading.Channels` queue and processed by a hosted background service, so the stock request does not wait for SMTP delivery. The current alert is emitted when active stock crosses from at/above the threshold to below it.
 
@@ -143,7 +146,7 @@ The low-stock event is published to an in-memory `System.Threading.Channels` que
 
 `POST /api/batches/scan-label` accepts a JPEG, PNG, or WebP image up to 10 MB and is available to Admin and Operator roles. It returns OCR raw text, suggested chemical match, lot number, expiration date, and the internal `BAT-{lot}` payload. Lot labels include `LOT`, `BATCH`, `PARTI`/`PARTİ`, and `P.NO`; expiration labels include `EXP`, `SKT`, and `BBD` with day/month/year, ISO date, or month/year formats. The user reviews the suggestions before saving.
 
-**OCR is optional and off by default. OCR is disabled in the live demo**; the rest of the system works the same without it. While OCR is disabled, `scan-label` returns HTTP 503 with `errorCode: "OCR_DISABLED"` and users enter batch details by hand. To try OCR locally, set `OCR_ENABLED=true` and start the `ocr` Compose profile (`docker compose --profile ocr up`):
+**OCR is optional and off by default** (`OCR_ENABLED=false` in `.env.example`); the rest of the system works the same without it. While OCR is disabled, `scan-label` returns HTTP 503 with `errorCode: "OCR_DISABLED"` and users enter batch details by hand. To try OCR locally, set `OCR_ENABLED=true` and start the `ocr` Compose profile (`docker compose --profile ocr up`):
 
 ```bash
 OCR_ENABLED=true docker compose --profile ocr up -d --build   # or set OCR_ENABLED=true in .env
@@ -153,7 +156,7 @@ The backend does not wait for the OCR container and starts normally without it. 
 
 With the `ocr` profile, Compose runs an open-source PaddleOCR (PP-OCRv4) FastAPI service locally. The `ocr-service` container is attached only to an internal Docker network shared with the backend, has no published host port, and handles OCR at `http://ocr-service:8080/ocr`. The backend sends the uploaded image as multipart field `file`, then passes the returned text to the label parser. The Docker image caches the English recognition, detection, and angle-classifier model weights during image build, so OCR inference does not contact an external service or download models at runtime. The health endpoint is available to Docker at `http://ocr-service:8080/health`.
 
-In Development outside Compose, `Ocr:Mode=Sample` (configured in `appsettings.Development.json`) remains available for parser/UI tests and returns fixture text without inspecting the uploaded image. Compose uses `OCR_MODE=Remote` and the local OCR service when OCR is enabled. No external OCR API or API key is needed by the default deployment.
+In Development outside Compose, `Ocr:Mode=Sample` (configured in `appsettings.Development.json`) remains available for parser/UI tests and returns fixture text without inspecting the uploaded image. Compose uses `OCR_MODE=Remote` and the local OCR service when OCR is enabled. No external OCR API or API key is needed.
 
 ### İçe aktarma (Chemical Excel import)
 
@@ -177,9 +180,24 @@ POST /api/chemicals/bulk-import               → real import (multipart field `
 
 ---
 
-## Live Demo
+## Local Demo
 
-For the intentionally public demo, enable both `DEMO_USER_ENABLED=true` and `DEMO_DATA_ENABLED=true`. Sign in with the operational account **demo / demo123**. It has the `Operator` role: it can browse inventory, receive supplier deliveries by creating batches, create and complete relocation tasks, and consume stock. Chemical, address, and stock-unit administration, relocation-task cancellation, user management, and system settings remain Admin-only. Batch creation validates the selected active chemical and available storage capacity. The account and data flags default off in Production; never use the sample password for an administrator account.
+There is no hosted instance; the demo runs on your machine with Docker Compose:
+
+```bash
+cp .env.example .env
+# In .env: replace the REPLACE_WITH_... placeholders (e.g. openssl rand -base64 48) and set
+#   DEMO_USER_ENABLED=true
+#   DEMO_DATA_ENABLED=true
+#   DOMAIN=localhost          # required: the example value is a public placeholder domain
+docker compose up -d --build
+```
+
+Open `http://localhost`. `DOMAIN` must be `localhost` (or removed, which defaults to `localhost`); otherwise Caddy only serves the configured public name and tries to obtain a public certificate for it. With `localhost`, Caddy uses its own local certificate, so `http://localhost` redirects to `https://localhost` and the browser shows a certificate warning the first time (for command-line checks use `curl -k https://localhost/api/health`).
+
+To sign in as administrator, use the username `admin` with the `ADMIN_PASSWORD` value from your `.env`.
+
+The Compose backend runs in Production mode, where both demo flags default off, so they must be set explicitly. Sign in with the operational account **demo / demo123**. It has the `Operator` role: it can browse inventory, export the inventory Excel report, receive supplier deliveries by creating batches, create and complete relocation tasks, and consume stock. Chemical, address, and stock-unit administration, the chemical Excel template and bulk import, relocation-task cancellation, user management, and settings changes remain Admin-only. Batch creation validates the selected active chemical and available storage capacity. Never use the sample password for an administrator account.
 
 Try these predictable, entirely fictional barcode values:
 
@@ -187,9 +205,11 @@ Consume example:
 
 - Batch (consume flow): `BAT-DEMO-BAT-001`
 - Unit (consume flow): `UNIT-DEMO-UNIT-001`
-- Near-expiry batch example: `BAT-DEMO-BAT-002`
+- Near-expiry batch example: `BAT-DEMO-BAT-002` (expires 10 days after seeding; listed under the dashboard's expiring-soon panel)
 
 Consume için birimin kendi batch'i okutulmalı (BATCH_MISMATCH). For consume, the unit's own batch must be scanned (BATCH_MISMATCH).
+
+The demo seed gives each chemical its own threshold, so the dashboard's low-stock panel starts with two chemicals below threshold (`DEMO-CHM-03`, `DEMO-CHM-10`) and one out of stock (`DEMO-CHM-04`). `DEMO-CHM-01` starts exactly at its threshold (3 units); consuming `UNIT-DEMO-UNIT-001` moves it below and queues a low-stock email (skipped with a single warning while `SMTP_HOST` is blank). Thresholds are written only when a demo chemical is first created; an existing demo database keeps its old values until it is reset.
 
 Relocation example (create a relocation task first):
 
@@ -197,13 +217,13 @@ Relocation example (create a relocation task first):
 - Current rack: `ADR-DEMO-RACK-GEN-01`
 - Destination rack (relocation): `ADR-DEMO-RACK-GEN-02`
 
-The demo inventory is reset daily by the guarded reset script. Reset removes business inventory only; admin/demo accounts, roles, refresh tokens, and system settings are preserved. It writes a PostgreSQL backup before deletion and retains the two newest backups. Restrict this automation to a demo-only deployment because it clears all business rows in the listed tables.
+To start over with fresh demo data, run the guarded reset script (see [Resetting demo data](#resetting-demo-data)).
 
 ---
 
 ## Security
 
-This repository applies **baseline security hardening for a public demo**. It is not a claim of production-grade security.
+Baseline security hardening intended for a publicly exposed demo; the project currently runs locally. Not a claim of production-grade security.
 
 ### Protections in place
 
@@ -271,7 +291,7 @@ Unless marked public, API endpoints require an authenticated access token. **Adm
 | `/api/settings/barcode-format`, `/api/settings/notifications` | GET | Admin, Operator |
 | `/api/settings/barcode-format`, `/api/settings/notifications`, `/api/settings/test-alert-email` | PUT, PUT, POST | Admin |
 | `/api/labels/preview` | GET | Admin, Operator |
-| `/api/dashboard/aggregate`, `/api/dashboard/pending`, `/api/dashboard/recent-consumption` | GET | Admin, Operator |
+| `/api/dashboard/aggregate`, `/api/dashboard/pending`, `/api/dashboard/recent-consumption`, `/api/dashboard/alerts` | GET | Admin, Operator |
 | `/api/warehouses` | GET | Admin, Operator |
 | `/api/shops` | GET | Admin, Operator |
 | `/api/types` | GET | Admin, Operator |
@@ -284,41 +304,23 @@ Unless marked public, API endpoints require an authenticated access token. **Adm
 | `/api/users/{id}/role`, `/api/users/{id}/active` | PUT | Admin |
 | `/api/users/{id}/reset-password` | POST | Admin |
 
-`/api/safetyassistant/ask` is anonymous and limited to ten requests per client IP per 60 seconds by default. Override it with `RateLimiting__SafetyAssistant__PermitLimit` and `RateLimiting__SafetyAssistant__WindowSeconds`. The service calls local Ollama at `http://localhost:11434` using Qwen and Nomic models; it contains no paid external API integration or API key, and Compose does not start an Ollama service. In the live deployment, Ollama is therefore unavailable and SafetyAssistant responds in fallback mode.
+`/api/safetyassistant/ask` is anonymous and limited to ten requests per client IP per 60 seconds by default. Override it with `RateLimiting__SafetyAssistant__PermitLimit` and `RateLimiting__SafetyAssistant__WindowSeconds`. The service calls local Ollama at `http://localhost:11434` using Qwen and Nomic models; it contains no paid external API integration or API key, and Compose does not start an Ollama service. In the Compose stack, Ollama is therefore unavailable and SafetyAssistant responds in fallback mode.
 
 ### Resetting demo data
 
-The EF Core database has these application tables (plus PostgreSQL's `public.__EFMigrationsHistory`, which EF Core uses to track schema migrations):
-
-| Table | Reset behavior | Reason |
-|---|---|---|
-| `relocation_tasks` | Cleared | Demo workflow tasks refer to units and addresses; clear first. |
-| `units` | Cleared | Demo stock units refer to batches and may point to addresses. |
-| `batches` | Cleared | Demo batches refer to chemicals. |
-| `chemicals` | Cleared | Demo catalog records are recreated by the seeder. |
-| `addresses` | Cleared | Demo warehouse/rack locations are recreated after dependent rows are cleared. |
-| `users` | Preserved | Admin and demo accounts must remain available. |
-| `roles` | Preserved | Authorization roles remain linked to users. |
-| `user_roles` | Preserved | User-to-role assignments must remain intact. |
-| `refresh_tokens` | Preserved | Authentication state is retained; users are not deleted. |
-| `system_settings` | Preserved | Barcode and notification preferences are system configuration. |
-| `__EFMigrationsHistory` | Preserved | EF Core schema migration tracking is not business/demo data. |
-
-The reset clears the five business tables (`relocation_tasks`, `units`, `batches`, `chemicals`, `addresses`) in one transaction and in child-to-parent foreign-key order. No orphan rows are left: all rows that reference those business records are cleared in the same transaction, while user and role references are preserved. It creates a full `pg_dump` before deletion, including user password hashes, stores it under the ignored `backups/demo-reset/` directory with directory mode `0700` and dump-file mode `0600`, retains the two newest backups, restarts the backend to reseed data, and verifies `/api/health`. It does not remove the PostgreSQL volume or publish the database port. Run it only on a demo instance, because user-created business rows in the listed tables are also cleared.
-
-An intentional one-off invocation is:
+`scripts/reset-demo.sh` restores the fictional demo inventory on the local Compose stack. Run it from the repository root while the stack is up; it uses the `.env` file there and needs `docker`, `curl`, and `jq`:
 
 ```bash
-DEMO_DATA_ENABLED=true ./scripts/reset-demo.sh --env-file /etc/mts/demo.env --confirm-demo-reset
+DEMO_DATA_ENABLED=true ./scripts/reset-demo.sh --confirm-demo-reset
 ```
 
-The script exits without touching the database unless the flag and explicit confirmation are both present and the running backend also has `DEMO_DATA_ENABLED=true`. To schedule a daily reset, an operator may add a cron entry on the demo host; this repository does not install or configure cron:
+It refuses to run unless `DEMO_DATA_ENABLED=true` is set both in your shell and in the running backend, and `--confirm-demo-reset` is given. Then it:
 
-```cron
-0 4 * * * DEMO_DATA_ENABLED=true /absolute/path/to/MaterialTraceabilitySystem/scripts/reset-demo.sh --env-file /etc/mts/demo.env --confirm-demo-reset >> /var/log/mts-demo-reset.log 2>&1
-```
+1. writes a full `pg_dump` (including password hashes) to the git-ignored `backups/demo-reset/` folder (mode `0700`, files `0600`) and keeps the two newest dumps;
+2. clears `relocation_tasks`, `units`, `batches`, `chemicals`, and `addresses` in one transaction (child-to-parent order);
+3. restarts the backend, which reseeds the demo data, and waits for `https://localhost/api/health`.
 
-The 04:00 schedule targets a low-traffic period. The reset restarts the backend, so users may see a brief service interruption while the demo data is reseeded and health checks recover.
+`users`, `roles`, `user_roles`, `refresh_tokens`, `system_settings`, and `__EFMigrationsHistory` are preserved, so the admin and demo accounts and your settings survive. The PostgreSQL volume is not removed. Business rows you created yourself in the cleared tables are deleted too, so use it only on demo data. Pass `--env-file PATH` if your Compose environment file is not `./.env`.
 
 ### Deliberately deferred
 

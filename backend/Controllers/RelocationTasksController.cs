@@ -23,14 +23,7 @@ public class RelocationTasksController(IRelocationTaskService taskService) : Con
     public async Task<ActionResult<RelocationTaskResponse>> Create(
         CreateRelocationTaskRequest request, CancellationToken ct)
     {
-        try
-        {
-            return Ok(await taskService.CreateTaskAsync(request, ct));
-        }
-        catch (InvalidOperationException ex)
-        {
-            return BadRequest(ex.Message);
-        }
+        return Ok(await taskService.CreateTaskAsync(request, ct));
     }
 
     [HttpGet("eligible-targets/{unitId:long}")]

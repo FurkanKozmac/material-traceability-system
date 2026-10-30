@@ -134,25 +134,18 @@ public class BatchesController(
     [Authorize(Roles = "Admin,Operator")]
     public async Task<ActionResult<BatchResponse>> Create(CreateBatchRequest request, CancellationToken ct)
     {
+        var batch = await batchService.CreateAsync(request, ct);
         try
         {
-            var batch = await batchService.CreateAsync(request, ct);
-            try
-            {
-                await hubContext.Clients.All.SendAsync("BatchCreated", new { batch.Id, batch.BatchNo }, ct);
-            }
-            catch (Exception ex)
-            {
-                // Persistence has already succeeded; a realtime notification failure must not
-                // turn a successful create into an apparent API failure for the operator.
-                logger.LogWarning(ex, "Batch {BatchId} was created but its realtime notification failed", batch.Id);
-            }
-
-            return CreatedAtAction(nameof(GetById), new { id = batch.Id }, batch);
+            await hubContext.Clients.All.SendAsync("BatchCreated", new { batch.Id, batch.BatchNo }, ct);
         }
-        catch (InvalidOperationException ex)
+        catch (Exception ex)
         {
-            return BadRequest(ex.Message);
+            // Persistence has already succeeded; a realtime notification failure must not
+            // turn a successful create into an apparent API failure for the operator.
+            logger.LogWarning(ex, "Batch {BatchId} was created but its realtime notification failed", batch.Id);
         }
+
+        return CreatedAtAction(nameof(GetById), new { id = batch.Id }, batch);
     }
 }

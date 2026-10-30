@@ -7,18 +7,18 @@ public static class DemoDataSeeder
 {
     private static readonly ChemicalSeed[] Chemicals =
     [
-        new("DEMO-CHM-01", "Polymer Stabilizer M-01", "Kurgusal polimer katkısı; yalnızca demo verisi.", "GENERAL"),
-        new("DEMO-CHM-02", "Surface Prep Solvent S-02", "Kurgusal yüzey hazırlama solventi.", "SOLVENT"),
-        new("DEMO-CHM-03", "Low-VOC Rinse Q-03", "Kurgusal düşük uçuculukta durulama karışımı.", "SOLVENT"),
-        new("DEMO-CHM-04", "Degreasing Blend K-04", "Kurgusal yağ alma karışımı.", "SOLVENT"),
-        new("DEMO-CHM-05", "Primer Resin P-05", "Kurgusal boya astarı reçinesi.", "PAINT"),
-        new("DEMO-CHM-06", "Pigment Carrier P-06", "Kurgusal pigment taşıyıcı.", "PAINT"),
-        new("DEMO-CHM-07", "Clear Coat Binder P-07", "Kurgusal son kat bağlayıcısı.", "PAINT"),
-        new("DEMO-CHM-08", "Reactive Diluent F-08", "Kurgusal yanıcı reaktif seyreltici.", "FLAMMABLE"),
-        new("DEMO-CHM-09", "Fast-Cure Additive F-09", "Kurgusal hızlı kür katkısı.", "FLAMMABLE"),
-        new("DEMO-CHM-10", "Buffer Solution C-10", "Kurgusal korozif tampon çözeltisi.", "CORROSIVE"),
-        new("DEMO-CHM-11", "Etching Compound C-11", "Kurgusal yüzey aşındırma bileşiği.", "CORROSIVE"),
-        new("DEMO-CHM-12", "Cleaning Agent G-12", "Kurgusal genel amaçlı temizlik maddesi.", "GENERAL")
+        new("DEMO-CHM-01", "Polymer Stabilizer M-01", "Kurgusal polimer katkısı; yalnızca demo verisi.", "GENERAL", 3),
+        new("DEMO-CHM-02", "Surface Prep Solvent S-02", "Kurgusal yüzey hazırlama solventi.", "SOLVENT", 2),
+        new("DEMO-CHM-03", "Low-VOC Rinse Q-03", "Kurgusal düşük uçuculukta durulama karışımı.", "SOLVENT", 3),
+        new("DEMO-CHM-04", "Degreasing Blend K-04", "Kurgusal yağ alma karışımı.", "SOLVENT", 2),
+        new("DEMO-CHM-05", "Primer Resin P-05", "Kurgusal boya astarı reçinesi.", "PAINT", 2),
+        new("DEMO-CHM-06", "Pigment Carrier P-06", "Kurgusal pigment taşıyıcı.", "PAINT", 1),
+        new("DEMO-CHM-07", "Clear Coat Binder P-07", "Kurgusal son kat bağlayıcısı.", "PAINT", 1),
+        new("DEMO-CHM-08", "Reactive Diluent F-08", "Kurgusal yanıcı reaktif seyreltici.", "FLAMMABLE", 2),
+        new("DEMO-CHM-09", "Fast-Cure Additive F-09", "Kurgusal hızlı kür katkısı.", "FLAMMABLE", 1),
+        new("DEMO-CHM-10", "Buffer Solution C-10", "Kurgusal korozif tampon çözeltisi.", "CORROSIVE", 3),
+        new("DEMO-CHM-11", "Etching Compound C-11", "Kurgusal yüzey aşındırma bileşiği.", "CORROSIVE", 1),
+        new("DEMO-CHM-12", "Cleaning Agent G-12", "Kurgusal genel amaçlı temizlik maddesi.", "GENERAL", 1)
     ];
 
     private static readonly AddressSeed[] Addresses =
@@ -39,7 +39,10 @@ public static class DemoDataSeeder
         new("DEMO-BAT-005", "DEMO-CHM-08", 3, 365),
         new("DEMO-BAT-006", "DEMO-CHM-10", 2, 120),
         new("DEMO-BAT-007", "DEMO-CHM-06", 2, 240),
-        new("DEMO-BAT-008", "DEMO-CHM-09", 2, 40)
+        new("DEMO-BAT-008", "DEMO-CHM-09", 2, 40),
+        new("DEMO-BAT-009", "DEMO-CHM-07", 2, 200),
+        new("DEMO-BAT-010", "DEMO-CHM-11", 2, 300),
+        new("DEMO-BAT-011", "DEMO-CHM-12", 2, 150)
     ];
 
     private static readonly UnitSeed[] Units =
@@ -64,7 +67,13 @@ public static class DemoDataSeeder
         new("UNIT-DEMO-UNIT-018", "DEMO-BAT-007", "DEMO-RACK-PNT-01"),
         new("UNIT-DEMO-UNIT-019", "DEMO-BAT-007", "DEMO-RACK-PNT-01"),
         new("UNIT-DEMO-UNIT-020", "DEMO-BAT-008", "DEMO-RACK-FLM-01"),
-        new("UNIT-DEMO-UNIT-021", "DEMO-BAT-008", "DEMO-RACK-FLM-01")
+        new("UNIT-DEMO-UNIT-021", "DEMO-BAT-008", "DEMO-RACK-FLM-01"),
+        new("UNIT-DEMO-UNIT-022", "DEMO-BAT-009", "DEMO-RACK-PNT-01"),
+        new("UNIT-DEMO-UNIT-023", "DEMO-BAT-009", "DEMO-RACK-PNT-01"),
+        new("UNIT-DEMO-UNIT-024", "DEMO-BAT-010", "DEMO-RACK-COR-01"),
+        new("UNIT-DEMO-UNIT-025", "DEMO-BAT-010", "DEMO-RACK-COR-01"),
+        new("UNIT-DEMO-UNIT-026", "DEMO-BAT-011", "DEMO-RACK-GEN-01"),
+        new("UNIT-DEMO-UNIT-027", "DEMO-BAT-011", "DEMO-RACK-GEN-01")
     ];
 
     private static readonly RelocationSeed[] Relocations =
@@ -105,7 +114,8 @@ public static class DemoDataSeeder
                     Name = seed.Name,
                     Description = seed.Description,
                     StorageType = seed.StorageType,
-                    MinStockThreshold = 8,
+                    // Only applied when the chemical is created; existing rows keep their threshold.
+                    MinStockThreshold = seed.MinStockThreshold,
                     Stopped = false
                 };
                 context.Chemicals.Add(chemical);
@@ -218,7 +228,7 @@ public static class DemoDataSeeder
         await transaction.CommitAsync(ct);
     }
 
-    private sealed record ChemicalSeed(string Code, string Name, string Description, string StorageType);
+    private sealed record ChemicalSeed(string Code, string Name, string Description, string StorageType, int MinStockThreshold);
     private sealed record AddressSeed(string Code, string StorageType);
     private sealed record BatchSeed(string Number, string ChemicalCode, int Quantity, int ExpirationOffsetDays);
     private sealed record UnitSeed(string Barcode, string BatchNumber, string AddressCode);

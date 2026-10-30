@@ -104,11 +104,11 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
     {
         var exists = await context.Units.AnyAsync(u => u.Barcode == request.Barcode, ct);
         if (exists)
-            throw new InvalidOperationException($"'{request.Barcode}' barkodu zaten kayıtlı!");
+            throw new BusinessRuleException($"'{request.Barcode}' barkodu zaten kayıtlı!");
         
         var batchExists = await context.Batches.AnyAsync(b => b.Id == request.BatchId, ct);
         if (!batchExists)
-            throw new InvalidOperationException("Belirtilen parti (Batch) bulunamadı!");
+            throw new BusinessRuleException("Belirtilen parti (Batch) bulunamadı!");
 
         var unit = new Unit
         {
@@ -125,7 +125,7 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
             var placement = (await AddressLockHelper.LockAsync(
                 context, [request.AddressId.Value], ct)).SingleOrDefault();
             if (placement is null)
-                throw new InvalidOperationException("Belirtilen raf bulunamadı!");
+                throw new BusinessRuleException("Belirtilen raf bulunamadı!");
 
             var occupancy = await context.Units.CountAsync(
                 u => u.AddressId == placement.Id &&
@@ -184,7 +184,7 @@ public class UnitService(MtsDbContext context, IHubContext<TraceabilityHub> hubC
             .FirstOrDefaultAsync(u => u.Barcode == barcode, ct);
 
         if (unit is null)
-            throw new InvalidOperationException($"'{barcode}' barkodlu stok birimi bulunamadı!");
+            throw new BusinessRuleException($"'{barcode}' barkodlu stok birimi bulunamadı!");
 
         if (string.IsNullOrWhiteSpace(batchBarcode))
             throw new BusinessRuleException("Parti barkodu zorunludur.", "BATCH_REQUIRED");

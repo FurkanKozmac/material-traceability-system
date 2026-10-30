@@ -5,6 +5,7 @@ import api from '../api';
 import useWebSocket from '../hooks/useWebSocket';
 import useSignalR from '../hooks/useSignalR';
 import { useLanguage } from '../useLanguage';
+import { formatDaysLeft, formatShownOfTotal, lowStockSeverity } from '../domain/dashboardAlerts';
 
 const StatCard = memo(({ title, value, icon, color, bgColor }) => (
   <Paper sx={{ p: 3, display: 'flex', alignItems: 'center', justifyContent: 'space-between', borderRadius: 2, boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)' }}>
@@ -22,6 +23,27 @@ const StatCard = memo(({ title, value, icon, color, bgColor }) => (
   </Paper>
 ));
 
+const AlertPanel = memo(({ title, shown, total, emptyText, headers, children }) => (
+  <Paper sx={{ height: '100%', borderRadius: 2, boxShadow: '0 1px 3px 0 rgba(0,0,0,0.1)', overflow: 'hidden' }}>
+    <Box sx={{ p: 2, borderBottom: '1px solid #e5e7eb', backgroundColor: '#f8fafc', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <Typography variant="h6" sx={{ fontWeight: 600, color: '#1f2937' }}>{title}</Typography>
+      <Chip label={formatShownOfTotal(shown, total)} size="small" sx={{ fontWeight: 600 }} />
+    </Box>
+    {shown === 0 ? (
+      <Typography variant="body2" sx={{ p: 3, color: '#64748b', textAlign: 'center' }}>{emptyText}</Typography>
+    ) : (
+      <Table size="small">
+        <TableHead>
+          <TableRow>
+            {headers.map((header) => <TableCell key={header} sx={{ fontWeight: 600 }}>{header}</TableCell>)}
+          </TableRow>
+        </TableHead>
+        <TableBody>{children}</TableBody>
+      </Table>
+    )}
+  </Paper>
+));
+
 const Dashboard = memo(() => {
   const { t, language } = useLanguage();
   const [stats, setStats] = useState({
@@ -30,21 +52,23 @@ const Dashboard = memo(() => {
     pendingReUse: 0,
     expired: 0,
     recentActivity: [],
+    alerts: { nearExpiryDays: 30, nearExpiryTotal: 0, nearExpiry: [], lowStockTotal: 0, lowStock: [] },
     loading: true
   });
 
   const fetchDashboardData = useCallback(async () => {
     try {
-      const [aggregateResponse, pendingResponse, recentResponse] = await Promise.all([
+      const [aggregateResponse, pendingResponse, recentResponse, alertsResponse] = await Promise.all([
         api.get('/dashboard/aggregate'),
         api.get('/dashboard/pending'),
         api.get('/dashboard/recent-consumption'),
+        api.get('/dashboard/alerts'),
       ]);
       const aggregates = aggregateResponse.data;
       const recentActivity = recentResponse.data;
       setStats({ totalAvailable: aggregates.availableInStock, totalConsumed: aggregates.totalConsumed,
         pendingReUse: pendingResponse.data.count, expired: aggregates.blockedExpired,
-        recentActivity, loading: false });
+        recentActivity, alerts: alertsResponse.data, loading: false });
     } catch (err) {
       console.error('Failed to fetch dashboard stats', err);
       setStats(prev => ({ ...prev, loading: false }));
@@ -106,6 +130,59 @@ const Dashboard = memo(() => {
             color="#dc2626" 
             bgColor="#fee2e2" 
           />
+        </Grid>
+      </Grid>
+
+      {/* Near-expiry and low-stock alerts */}
+      <Grid container spacing={3} sx={{ mb: 4 }}>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <AlertPanel
+            title={t('nearExpiryBatches').replace('{days}', stats.alerts.nearExpiryDays)}
+            shown={stats.alerts.nearExpiry.length}
+            total={stats.alerts.nearExpiryTotal}
+            emptyText={t('noNearExpiry').replace('{days}', stats.alerts.nearExpiryDays)}
+            headers={[t('batchNo'), t('chemical'), t('expirationDate'), t('daysLeft'), t('activeUnits')]}
+          >
+            {stats.alerts.nearExpiry.map((batch) => (
+              <TableRow key={batch.batchId} hover>
+                <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{batch.batchNo}</TableCell>
+                <TableCell>{batch.chemicalName}</TableCell>
+                <TableCell>{new Date(batch.expirationDate).toLocaleDateString(language === 'tr' ? 'tr-TR' : 'en-US')}</TableCell>
+                <TableCell>
+                  <Chip label={formatDaysLeft(batch.daysLeft, t)} size="small" sx={{ backgroundColor: '#ffedd5', color: '#9a3412', fontWeight: 600 }} />
+                </TableCell>
+                <TableCell>{batch.activeUnits}</TableCell>
+              </TableRow>
+            ))}
+          </AlertPanel>
+        </Grid>
+        <Grid size={{ xs: 12, md: 6 }}>
+          <AlertPanel
+            title={t('lowStockChemicals')}
+            shown={stats.alerts.lowStock.length}
+            total={stats.alerts.lowStockTotal}
+            emptyText={t('noLowStock')}
+            headers={[t('chemicalCode'), t('chemicalName'), t('activeUnits'), t('stockThreshold'), '']}
+          >
+            {stats.alerts.lowStock.map((chemical) => {
+              const isOut = lowStockSeverity(chemical.activeUnits) === 'out';
+              return (
+                <TableRow key={chemical.chemicalId} hover>
+                  <TableCell sx={{ fontFamily: 'monospace', fontWeight: 600 }}>{chemical.chemicalCode}</TableCell>
+                  <TableCell>{chemical.name}</TableCell>
+                  <TableCell>{chemical.activeUnits}</TableCell>
+                  <TableCell>{chemical.minStockThreshold}</TableCell>
+                  <TableCell>
+                    <Chip
+                      label={isOut ? t('outOfStock') : t('lowStockBadge')}
+                      size="small"
+                      sx={{ backgroundColor: isOut ? '#fee2e2' : '#ffedd5', color: isOut ? '#b91c1c' : '#9a3412', fontWeight: 600, fontSize: '0.7rem' }}
+                    />
+                  </TableCell>
+                </TableRow>
+              );
+            })}
+          </AlertPanel>
         </Grid>
       </Grid>
 

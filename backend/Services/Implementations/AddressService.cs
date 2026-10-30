@@ -50,10 +50,10 @@ public class AddressService(MtsDbContext context) : IAddressService
             throw new BusinessRuleException("Raf kapasitesi sıfırdan büyük olmalıdır.", "INVALID_RACK_CAPACITY");
 
         if (!Enum.TryParse<StorageType>(request.StorageType, true, out var storageType))
-            throw new InvalidOperationException("Geçersiz depolama türü!");
+            throw new BusinessRuleException("Geçersiz depolama türü!");
 
         if (await context.Addresses.AnyAsync(a => a.Code == request.Code, ct))
-            throw new InvalidOperationException($"'{request.Code}' kodlu adres zaten tanımlı!");
+            throw new BusinessRuleException($"'{request.Code}' kodlu adres zaten tanımlı!");
 
         var address = new Address
         {
@@ -69,7 +69,7 @@ public class AddressService(MtsDbContext context) : IAddressService
     public async Task<bool> UpdateStorageTypeAsync(long id, string storageType, CancellationToken ct = default)
     {
         if (!Enum.TryParse<StorageType>(storageType, true, out var parsedStorageType))
-            throw new InvalidOperationException("Geçersiz depolama türü!");
+            throw new BusinessRuleException("Geçersiz depolama türü!");
 
         var address = await context.Addresses.FindAsync([id], ct);
         if (address is null) return false;

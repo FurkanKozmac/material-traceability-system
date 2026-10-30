@@ -10,8 +10,9 @@ namespace backend.Services.Implementations;
 
 public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowStockChannel) : IRelocationTaskService
 {
-    private static readonly Func<MtsDbContext, IQueryable<RelocationTaskResponse>> Project = context =>
-        context.RelocationTasks.AsNoTracking().Select(t => new RelocationTaskResponse(
+    // Filter the entity query before calling this; EF cannot translate predicates on the projected record.
+    private static readonly Func<IQueryable<RelocationTask>, IQueryable<RelocationTaskResponse>> Project = tasks =>
+        tasks.AsNoTracking().Select(t => new RelocationTaskResponse(
             t.Id, t.Status, t.CreatedAt, t.CompletedAt, t.UnitId, t.Unit.Barcode,
             t.FromAddressId, t.FromAddress.Code, t.ToAddressId, t.ToAddress.Code,
             t.CompletedByUserId, t.CompletedByUser != null ? t.CompletedByUser.Username : null));
@@ -55,7 +56,7 @@ public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowSto
             .FirstOrDefaultAsync(ct);
 
         if (unit is null)
-            throw new InvalidOperationException("Taşınacak stok birimi bulunamadı!");
+            throw new BusinessRuleException("Taşınacak stok birimi bulunamadı!");
 
         EnsureUnitCanBeRelocated(unit.Status, unit.ExpirationDate, unit.ChemicalStopped);
 
@@ -86,12 +87,12 @@ public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowSto
             .Include(u => u.Batch).ThenInclude(b => b.Chemical)
             .FirstOrDefaultAsync(u => u.Id == request.UnitId, ct);
         if (unit is null)
-            throw new InvalidOperationException("Taşınacak birim (Unit) bulunamadı!");
+            throw new BusinessRuleException("Taşınacak birim (Unit) bulunamadı!");
         EnsureUnitCanBeRelocated(unit.Status, unit.Batch.ExpirationDate, unit.Batch.Chemical.Stopped);
         if (!unit.AddressId.HasValue)
-            throw new InvalidOperationException("Birim şu anda hiçbir rafta kayıtlı değil!");
+            throw new BusinessRuleException("Birim şu anda hiçbir rafta kayıtlı değil!");
         if (unit.AddressId.Value == request.ToAddressId)
-            throw new InvalidOperationException("Birim zaten hedef adreste bulunuyor!");
+            throw new BusinessRuleException("Birim zaten hedef adreste bulunuyor!");
 
         var target = await context.Addresses
             .AsNoTracking()
@@ -106,9 +107,9 @@ public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowSto
             .FirstOrDefaultAsync(ct);
 
         if (target is null)
-            throw new InvalidOperationException("Hedef adres bulunamadı!");
+            throw new BusinessRuleException("Hedef adres bulunamadı!");
         if (target.Occupancy >= target.MaxCapacity)
-            throw new InvalidOperationException($"Hedef adres ({target.Code}) maksimum kapasitesine ulaştı!");
+            throw new BusinessRuleException($"Hedef adres ({target.Code}) maksimum kapasitesine ulaştı!");
         if (!string.Equals(target.StorageType, unit.Batch.Chemical.StorageType, StringComparison.OrdinalIgnoreCase))
             throw new BusinessRuleException(
                 $"Hedef rafın türü ({target.StorageType}), kimyasalın depolama türü ({unit.Batch.Chemical.StorageType}) ile uyumlu değil!");
@@ -129,7 +130,7 @@ public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowSto
 
         context.RelocationTasks.Add(task);
         await context.SaveChangesAsync(ct);
-        return await Project(context).FirstAsync(t => t.Id == task.Id, ct);
+        return await Project(context.RelocationTasks.Where(t => t.Id == task.Id)).FirstAsync(ct);
     }
 
     public async Task<bool> CompleteTaskAsync(

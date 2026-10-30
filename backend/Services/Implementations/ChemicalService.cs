@@ -1,4 +1,5 @@
 using backend.Common.Enums;
+using backend.Common.Exceptions;
 using backend.Data;
 using backend.DTOs;
 using backend.Entities;
@@ -46,14 +47,14 @@ public class ChemicalService(MtsDbContext context) : IChemicalService
     public async Task<ChemicalResponse> CreateAsync(CreateChemicalRequest request, CancellationToken ct = default)
     {
         if (!Enum.TryParse<StorageType>(request.StorageType, true, out var storageType))
-            throw new InvalidOperationException("Geçersiz depolama türü!");
+            throw new BusinessRuleException("Geçersiz depolama türü!");
 
         var exists = await context.Chemicals
             .AnyAsync(c => c.ChemicalCode == request.ChemicalCode, ct);
 
         if (exists)
         {
-            throw new InvalidOperationException("Chemical already exists!");
+            throw new BusinessRuleException("Chemical already exists!");
         }
 
         var chemical = new Chemical
@@ -81,7 +82,7 @@ public class ChemicalService(MtsDbContext context) : IChemicalService
     public async Task<bool> UpdateAsync(long id, UpdateChemicalRequest request, CancellationToken ct = default)
     {
         if (!Enum.TryParse<StorageType>(request.StorageType, true, out var storageType))
-            throw new InvalidOperationException("Geçersiz depolama türü!");
+            throw new BusinessRuleException("Geçersiz depolama türü!");
 
         var chemical = await context.Chemicals.FindAsync([id], ct);
         if (chemical is null) return false;
