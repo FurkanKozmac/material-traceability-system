@@ -10,8 +10,9 @@ namespace backend.Services.Implementations;
 
 public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowStockChannel) : IRelocationTaskService
 {
-    private static readonly Func<MtsDbContext, IQueryable<RelocationTaskResponse>> Project = context =>
-        context.RelocationTasks.AsNoTracking().Select(t => new RelocationTaskResponse(
+    // Filter the entity query before calling this; EF cannot translate predicates on the projected record.
+    private static readonly Func<IQueryable<RelocationTask>, IQueryable<RelocationTaskResponse>> Project = tasks =>
+        tasks.AsNoTracking().Select(t => new RelocationTaskResponse(
             t.Id, t.Status, t.CreatedAt, t.CompletedAt, t.UnitId, t.Unit.Barcode,
             t.FromAddressId, t.FromAddress.Code, t.ToAddressId, t.ToAddress.Code,
             t.CompletedByUserId, t.CompletedByUser != null ? t.CompletedByUser.Username : null));
@@ -129,7 +130,7 @@ public class RelocationTaskService(MtsDbContext context, ILowStockChannel lowSto
 
         context.RelocationTasks.Add(task);
         await context.SaveChangesAsync(ct);
-        return await Project(context).FirstAsync(t => t.Id == task.Id, ct);
+        return await Project(context.RelocationTasks.Where(t => t.Id == task.Id)).FirstAsync(ct);
     }
 
     public async Task<bool> CompleteTaskAsync(
