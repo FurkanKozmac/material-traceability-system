@@ -335,6 +335,110 @@ public sealed class AuthorizationEndpointTests
     }
 
     [Fact]
+    public async Task Operator_IsForbidden_FromChemicalImportTemplate()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/chemicals/excel-template");
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Forbidden, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Anonymous_IsUnauthorized_ForChemicalImportTemplate()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+
+        using var response = await client.GetAsync("/api/chemicals/excel-template");
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task Anonymous_IsUnauthorized_ForBulkChemicalImport()
+    {
+        var chemicalExcel = CreateChemicalExcelMock(EmptyImportResult());
+        using var host = CreateHost(chemicalExcel);
+        using var client = host.GetTestClient();
+        using var request = CreateBulkImportRequest(role: "");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, response.StatusCode);
+        chemicalExcel.Verify(service => service.ImportAsync(
+            It.IsAny<Stream>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Admin_BulkImportDryRun_IsForwardedToService()
+    {
+        var chemicalExcel = CreateChemicalExcelMock(EmptyImportResult(dryRun: true));
+        using var host = CreateHost(chemicalExcel);
+        using var client = host.GetTestClient();
+        using var request = CreateBulkImportRequest("Admin", "?dryRun=true");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        chemicalExcel.Verify(service => service.ImportAsync(
+            It.IsAny<Stream>(), true, It.IsAny<CancellationToken>()), Times.Once);
+    }
+
+    [Fact]
+    public async Task Admin_BulkImportWithInvalidRows_ReturnsUnprocessableEntityWithReport()
+    {
+        var chemicalExcel = CreateChemicalExcelMock(EmptyImportResult(failedCount: 2));
+        using var host = CreateHost(chemicalExcel);
+        using var client = host.GetTestClient();
+        using var request = CreateBulkImportRequest("Admin");
+
+        using var response = await client.SendAsync(request);
+        var result = await response.Content.ReadFromJsonAsync<BulkImportResultDto>();
+
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, response.StatusCode);
+        Assert.NotNull(result);
+        Assert.False(result.Committed);
+        Assert.Equal(2, result.FailedCount);
+    }
+
+    [Fact]
+    public async Task Admin_BulkImportWithNonXlsxExtension_IsRejectedBeforeService()
+    {
+        var chemicalExcel = CreateChemicalExcelMock(EmptyImportResult());
+        using var host = CreateHost(chemicalExcel);
+        using var client = host.GetTestClient();
+        using var request = CreateBulkImportRequest("Admin", fileName: "chemicals.xlsm");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.BadRequest, response.StatusCode);
+        chemicalExcel.Verify(service => service.ImportAsync(
+            It.IsAny<Stream>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
+    public async Task Admin_BulkImportAboveFormLimit_IsRejectedBeforeService()
+    {
+        var chemicalExcel = CreateChemicalExcelMock(EmptyImportResult());
+        using var host = CreateHost(chemicalExcel);
+        using var client = host.GetTestClient();
+        // Default ExcelImport:MaxFileBytes is 2 MB; the filter allows only 64 KB of multipart overhead on top.
+        using var request = CreateBulkImportRequest("Admin", body: new byte[3 * 1024 * 1024]);
+
+        using var response = await client.SendAsync(request);
+
+        Assert.True(
+            response.StatusCode is HttpStatusCode.BadRequest or HttpStatusCode.RequestEntityTooLarge,
+            $"Unexpected status {response.StatusCode}");
+        chemicalExcel.Verify(service => service.ImportAsync(
+            It.IsAny<Stream>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()), Times.Never);
+    }
+
+    [Fact]
     public async Task Operator_CanExportInventoryReport()
     {
         using var host = CreateHost();
@@ -369,6 +473,39 @@ public sealed class AuthorizationEndpointTests
         Assert.DoesNotContain("Admin", login.Roles);
     }
 
+    private static BulkImportResultDto EmptyImportResult(bool dryRun = false, int failedCount = 0) =>
+        new(dryRun, !dryRun && failedCount == 0, 0, 0, 0, failedCount, [], []);
+
+    private static Mock<IChemicalExcelService> CreateChemicalExcelMock(BulkImportResultDto importResult)
+    {
+        var chemicalExcel = new Mock<IChemicalExcelService>();
+        chemicalExcel.Setup(service => service.CreateTemplateAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync([1, 2, 3]);
+        chemicalExcel.Setup(service => service.ImportAsync(It.IsAny<Stream>(), It.IsAny<bool>(), It.IsAny<CancellationToken>()))
+            .ReturnsAsync(importResult);
+        return chemicalExcel;
+    }
+
+    private static HttpRequestMessage CreateBulkImportRequest(
+        string role,
+        string query = "",
+        byte[]? body = null,
+        string fileName = "chemicals.xlsx")
+    {
+        var content = new MultipartFormDataContent();
+        var file = new ByteArrayContent(body ?? [1, 2, 3]);
+        file.Headers.ContentType = new System.Net.Http.Headers.MediaTypeHeaderValue(
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+        content.Add(file, "file", fileName);
+        var request = new HttpRequestMessage(HttpMethod.Post, "/api/chemicals/bulk-import" + query)
+        {
+            Content = content
+        };
+        if (role.Length > 0)
+            request.Headers.Add("X-Test-Roles", role);
+        return request;
+    }
+
     private static IConfiguration TestAuthenticationConfiguration() =>
         new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
         {
@@ -377,16 +514,12 @@ public sealed class AuthorizationEndpointTests
             ["Jwt:Audience"] = "backend-tests"
         }).Build();
 
-    private static IHost CreateHost()
+    private static IHost CreateHost(Mock<IChemicalExcelService>? chemicalExcelOverride = null)
     {
         var chemical = new Mock<IChemicalService>();
         chemical.Setup(service => service.DeleteAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()))
             .ReturnsAsync(true);
-        var chemicalExcel = new Mock<IChemicalExcelService>();
-        chemicalExcel.Setup(service => service.CreateTemplateAsync(It.IsAny<CancellationToken>()))
-            .ReturnsAsync([1, 2, 3]);
-        chemicalExcel.Setup(service => service.ImportAsync(It.IsAny<Stream>(), It.IsAny<CancellationToken>()))
-            .ReturnsAsync(new BulkImportResultDto(0, 0, 0, []));
+        var chemicalExcel = chemicalExcelOverride ?? CreateChemicalExcelMock(EmptyImportResult());
         var inventoryReport = new Mock<IInventoryReportService>();
         inventoryReport.Setup(service => service.ExportAuditReportAsync(It.IsAny<CancellationToken>()))
             .ReturnsAsync([1, 2, 3]);

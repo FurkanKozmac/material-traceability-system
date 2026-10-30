@@ -3,11 +3,43 @@ using MiniExcelLibs.Attributes;
 namespace backend.DTOs;
 
 public record BulkImportResultDto(
+    bool DryRun,
+    bool Committed,
     int TotalRows,
-    int SuccessCount,
+    int InsertCount,
+    int SkippedCount,
     int FailedCount,
+    List<ExcelImportRowDto> Rows,
     List<ExcelRowErrorDto> Errors
 );
+
+public record ExcelImportRowDto(
+    int RowNumber,
+    string? ChemicalCode,
+    string? Name,
+    string Status
+);
+
+public static class ExcelImportRowStatus
+{
+    public const string Insert = "Insert";
+    public const string Skip = "Skip";
+    public const string Error = "Error";
+}
+
+/// <summary>
+/// Single source of the chemical sheet schema, shared by the template writer and the importer.
+/// </summary>
+public static class ChemicalExcelColumns
+{
+    public const string Code = "Kimyasal Kodu *";
+    public const string Name = "Kimyasal Adı *";
+    public const string StorageType = "Depolama Tipi *";
+    public const string MinStockThreshold = "Kritik Stok Eşiği";
+    public const string Description = "Açıklama / İSG Notu";
+
+    public static readonly IReadOnlyList<string> All = [Code, Name, StorageType, MinStockThreshold, Description];
+}
 
 public record ExcelRowErrorDto(
     int RowNumber,
@@ -18,19 +50,19 @@ public record ExcelRowErrorDto(
 
 internal sealed class ChemicalTemplateRow
 {
-    [ExcelColumn(Name = "Kimyasal Kodu *", Index = 0)]
+    [ExcelColumn(Name = ChemicalExcelColumns.Code, Index = 0)]
     public string ChemicalCode { get; set; } = string.Empty;
 
-    [ExcelColumn(Name = "Kimyasal Adı *", Index = 1)]
+    [ExcelColumn(Name = ChemicalExcelColumns.Name, Index = 1)]
     public string Name { get; set; } = string.Empty;
 
-    [ExcelColumn(Name = "Depolama Tipi *", Index = 2)]
+    [ExcelColumn(Name = ChemicalExcelColumns.StorageType, Index = 2)]
     public string StorageType { get; set; } = string.Empty;
 
-    [ExcelColumn(Name = "Kritik Stok Eşiği", Index = 3)]
+    [ExcelColumn(Name = ChemicalExcelColumns.MinStockThreshold, Index = 3)]
     public int? MinStockThreshold { get; set; }
 
-    [ExcelColumn(Name = "Açıklama / İSG Notu", Index = 4)]
+    [ExcelColumn(Name = ChemicalExcelColumns.Description, Index = 4)]
     public string? Description { get; set; }
 }
 
