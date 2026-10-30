@@ -143,9 +143,17 @@ The low-stock event is published to an in-memory `System.Threading.Channels` que
 
 `POST /api/batches/scan-label` accepts a JPEG, PNG, or WebP image up to 10 MB and is available to Admin and Operator roles. It returns OCR raw text, suggested chemical match, lot number, expiration date, and the internal `BAT-{lot}` payload. Lot labels include `LOT`, `BATCH`, `PARTI`/`PARTİ`, and `P.NO`; expiration labels include `EXP`, `SKT`, and `BBD` with day/month/year, ISO date, or month/year formats. The user reviews the suggestions before saving.
 
-The Compose deployment runs an open-source PaddleOCR (PP-OCRv4) FastAPI service locally. The `ocr-service` container is attached only to an internal Docker network shared with the backend, has no published host port, and handles OCR at `http://ocr-service:8080/ocr`. The backend sends the uploaded image as multipart field `file`, then passes the returned text to the label parser. The Docker image caches the English recognition, detection, and angle-classifier model weights during image build, so OCR inference does not contact an external service or download models at runtime. The health endpoint is available to Docker at `http://ocr-service:8080/health`.
+**OCR is optional and off by default. OCR is disabled in the live demo**; the rest of the system works the same without it. While OCR is disabled, `scan-label` returns HTTP 503 with `errorCode: "OCR_DISABLED"` and users enter batch details by hand. To try OCR locally, set `OCR_ENABLED=true` and start the `ocr` Compose profile (`docker compose --profile ocr up`):
 
-In Development outside Compose, `Ocr:Mode=Sample` (configured in `appsettings.Development.json`) remains available for parser/UI tests and returns fixture text without inspecting the uploaded image. Compose explicitly uses `OCR_MODE=Remote` and the local OCR service. If the service is unavailable or returns invalid output, scan returns HTTP 503 with an OCR provider message. No external OCR API or API key is needed by the default deployment.
+```bash
+OCR_ENABLED=true docker compose --profile ocr up -d --build   # or set OCR_ENABLED=true in .env
+```
+
+The backend does not wait for the OCR container and starts normally without it. If OCR is enabled but the service is unreachable or fails, `scan-label` returns HTTP 503 with `errorCode: "OCR_UNAVAILABLE"` (no stack trace). Timeouts are short: `Ocr__ConnectTimeoutSeconds` (3 s) and `Ocr__TimeoutSeconds` (20 s total, CPU OCR included). The `ocr-service` image is pinned to `linux/amd64` (see the comment in `docker-compose.yml`); on ARM hosts it runs under emulation and is slower.
+
+With the `ocr` profile, Compose runs an open-source PaddleOCR (PP-OCRv4) FastAPI service locally. The `ocr-service` container is attached only to an internal Docker network shared with the backend, has no published host port, and handles OCR at `http://ocr-service:8080/ocr`. The backend sends the uploaded image as multipart field `file`, then passes the returned text to the label parser. The Docker image caches the English recognition, detection, and angle-classifier model weights during image build, so OCR inference does not contact an external service or download models at runtime. The health endpoint is available to Docker at `http://ocr-service:8080/health`.
+
+In Development outside Compose, `Ocr:Mode=Sample` (configured in `appsettings.Development.json`) remains available for parser/UI tests and returns fixture text without inspecting the uploaded image. Compose uses `OCR_MODE=Remote` and the local OCR service when OCR is enabled. No external OCR API or API key is needed by the default deployment.
 
 ### İçe aktarma (Chemical Excel import)
 
