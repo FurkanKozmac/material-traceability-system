@@ -41,8 +41,14 @@ services:
       Jwt__Audience: ${JWT_AUDIENCE:-MtsClients}
       Smtp__Host: ${SMTP_HOST:-localhost}
       Smtp__Port: ${SMTP_PORT:-1025}
+      RateLimiting__Login__PermitLimit: ${RateLimiting__Login__PermitLimit:-10}
+      RateLimiting__Login__WindowSeconds: ${RateLimiting__Login__WindowSeconds:-60}
       RateLimiting__SafetyAssistant__PermitLimit: ${RateLimiting__SafetyAssistant__PermitLimit:-10}
       RateLimiting__SafetyAssistant__WindowSeconds: ${RateLimiting__SafetyAssistant__WindowSeconds:-60}
+      RateLimiting__ExcelImport__PermitLimit: ${RateLimiting__ExcelImport__PermitLimit:-5}
+      RateLimiting__ExcelImport__WindowSeconds: ${RateLimiting__ExcelImport__WindowSeconds:-60}
+      RefreshTokenCleanup__IntervalHours: ${RefreshTokenCleanup__IntervalHours:-6}
+      RefreshTokenCleanup__RetentionDays: ${RefreshTokenCleanup__RetentionDays:-1}
     depends_on:
       db:
         condition: service_healthy
