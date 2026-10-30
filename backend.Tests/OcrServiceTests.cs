@@ -28,6 +28,47 @@ public sealed class OcrServiceTests
     }
 
     [Fact]
+    public async Task Disabled_ThrowsDisabledErrorWithoutCallingProvider()
+    {
+        var called = false;
+        using var client = new HttpClient(new StubHttpMessageHandler(_ =>
+        {
+            called = true;
+            return new HttpResponseMessage(HttpStatusCode.OK);
+        }));
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Ocr:Enabled"] = "false",
+            ["Ocr:Mode"] = "Remote",
+            ["Ocr:Endpoint"] = "http://ocr-service:8080/ocr"
+        }).Build();
+        var service = new OcrService(client, configuration, CreateEnvironment("Production"), NullLogger<OcrService>.Instance);
+
+        var error = await Assert.ThrowsAsync<OcrServiceUnavailableException>(() =>
+            service.ExtractTextAsync(new MemoryStream([1]), "image/jpeg"));
+
+        Assert.Equal(OcrServiceUnavailableException.DisabledCode, error.ErrorCode);
+        Assert.False(called);
+    }
+
+    [Fact]
+    public async Task ProviderTimeout_ReportsUnavailableCode()
+    {
+        using var client = new HttpClient(new ThrowingHttpMessageHandler(new TaskCanceledException("timeout")));
+        var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
+        {
+            ["Ocr:Mode"] = "Remote",
+            ["Ocr:Endpoint"] = "http://ocr-service:8080/ocr"
+        }).Build();
+        var service = new OcrService(client, configuration, CreateEnvironment("Production"), NullLogger<OcrService>.Instance);
+
+        var error = await Assert.ThrowsAsync<OcrServiceUnavailableException>(() =>
+            service.ExtractTextAsync(new MemoryStream([1]), "image/jpeg"));
+
+        Assert.Equal(OcrServiceUnavailableException.UnavailableCode, error.ErrorCode);
+    }
+
+    [Fact]
     public async Task RemoteModeWithoutEndpoint_ReportsMeaningfulUnavailableError()
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?>
@@ -124,6 +165,12 @@ public sealed class OcrServiceTests
         var environment = new Mock<IHostEnvironment>();
         environment.SetupGet(value => value.EnvironmentName).Returns(name);
         return environment.Object;
+    }
+
+    private sealed class ThrowingHttpMessageHandler(Exception exception) : HttpMessageHandler
+    {
+        protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken) =>
+            Task.FromException<HttpResponseMessage>(exception);
     }
 
     private sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpResponseMessage> respond) : HttpMessageHandler
