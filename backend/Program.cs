@@ -129,6 +129,8 @@ builder.Services.AddScoped<IAddressService, AddressService>();
 builder.Services.AddScoped<IRelocationTaskService, RelocationTaskService>();
 builder.Services.AddScoped<IMsdsRagService, MsdsRagService>();
 builder.Services.AddScoped<ISettingsService, SettingsService>();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IDashboardAlertService, DashboardAlertService>();
 builder.Services.AddSingleton<ILowStockChannel, LowStockChannel>();
 builder.Services.Configure<SmtpOptions>(builder.Configuration.GetSection(SmtpOptions.SectionName));
 builder.Services.AddScoped<IEmailService, MailKitEmailService>();

@@ -57,19 +57,23 @@ public sealed class DemoDataSeederTests
             supplier => Assert.StartsWith("Kurgusal Demo Tedarikçisi", supplier));
         Assert.Equal(12, await database.Context.Chemicals.CountAsync());
         Assert.Equal(10, await database.Context.Addresses.CountAsync());
-        Assert.Equal(8, await database.Context.Batches.CountAsync());
-        Assert.Equal(21, await database.Context.Units.CountAsync());
+        Assert.Equal(11, await database.Context.Batches.CountAsync());
+        Assert.Equal(27, await database.Context.Units.CountAsync());
         Assert.Equal(4, await database.Context.RelocationTasks.CountAsync(task => task.Status == "Pending"));
 
-        var belowThreshold = await database.Context.Chemicals
+        var stock = await database.Context.Chemicals
             .Select(chemical => new
             {
+                chemical.ChemicalCode,
                 chemical.MinStockThreshold,
                 InStock = chemical.Batches.SelectMany(batch => batch.Units)
                     .Count(unit => unit.Status == "InStock" || unit.Status == "AVAILABLE")
             })
-            .CountAsync(item => item.InStock < item.MinStockThreshold);
-        Assert.True(belowThreshold >= 8);
+            .ToListAsync();
+        // Balanced demo: two chemicals below threshold, one out of stock, the rest at or above it.
+        Assert.Equal(["DEMO-CHM-03", "DEMO-CHM-04", "DEMO-CHM-10"],
+            stock.Where(item => item.InStock < item.MinStockThreshold).Select(item => item.ChemicalCode).Order().ToList());
+        Assert.Equal(0, stock.Single(item => item.ChemicalCode == "DEMO-CHM-04").InStock);
     }
 
     [Fact]
@@ -84,7 +88,8 @@ public sealed class DemoDataSeederTests
 
         var seededGeneralChemical = await context.Chemicals.SingleAsync(item => item.ChemicalCode == "DEMO-CHM-01");
         seededGeneralChemical.Name = "Existing demo key must not be overwritten";
-        var optionalChemical = await context.Chemicals.SingleAsync(item => item.ChemicalCode == "DEMO-CHM-12");
+        // DEMO-CHM-04 is the only demo chemical without batches, so it can be removed without dependents.
+        var optionalChemical = await context.Chemicals.SingleAsync(item => item.ChemicalCode == "DEMO-CHM-04");
         context.Chemicals.Remove(optionalChemical);
         await context.SaveChangesAsync();
 
@@ -93,7 +98,7 @@ public sealed class DemoDataSeederTests
         Assert.Equal(initialCounts, await CountsAsync(context));
         Assert.Equal("Existing demo key must not be overwritten",
             (await context.Chemicals.SingleAsync(item => item.ChemicalCode == "DEMO-CHM-01")).Name);
-        Assert.True(await context.Chemicals.AnyAsync(item => item.ChemicalCode == "DEMO-CHM-12"));
+        Assert.True(await context.Chemicals.AnyAsync(item => item.ChemicalCode == "DEMO-CHM-04"));
     }
 
     [Fact]

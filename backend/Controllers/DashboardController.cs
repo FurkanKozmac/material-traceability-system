@@ -1,4 +1,7 @@
 using backend.Data;
+using backend.DTOs;
+using backend.Services.Interfaces;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 
@@ -6,7 +9,7 @@ namespace backend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class DashboardController(MtsDbContext context) : ControllerBase
+public class DashboardController(MtsDbContext context, IDashboardAlertService alertService) : ControllerBase
 {
     [HttpGet("aggregate")]
     public async Task<IActionResult> GetAggregate(CancellationToken ct)
@@ -39,6 +42,11 @@ public class DashboardController(MtsDbContext context) : ControllerBase
             blockedExpired
         });
     }
+
+    [HttpGet("alerts")]
+    [Authorize(Roles = "Admin,Operator")]
+    public async Task<ActionResult<DashboardAlertsResponse>> GetAlerts(CancellationToken ct) =>
+        Ok(await alertService.GetAlertsAsync(ct));
 
     [HttpGet("pending")]
     public async Task<IActionResult> GetPending(CancellationToken ct)

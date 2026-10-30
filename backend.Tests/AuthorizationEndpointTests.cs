@@ -235,6 +235,21 @@ public sealed class AuthorizationEndpointTests
     }
 
     [Fact]
+    public async Task Operator_CanReadDashboardAlerts_AndAnonymousIsRejected()
+    {
+        using var host = CreateHost();
+        using var client = host.GetTestClient();
+        using var anonymous = await client.GetAsync("/api/dashboard/alerts");
+        using var request = new HttpRequestMessage(HttpMethod.Get, "/api/dashboard/alerts");
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+
+        Assert.Equal(HttpStatusCode.Unauthorized, anonymous.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
     public async Task ProtectedEndpoint_WithoutIdentity_ReturnsUnauthorized()
     {
         using var host = CreateHost();
@@ -592,6 +607,9 @@ public sealed class AuthorizationEndpointTests
                 "DEMO-BAT-001", "Polymer Stabilizer M-01", "DEMO-CHM-01", DateTime.UtcNow.AddDays(180), false));
         var settings = new Mock<ISettingsService>();
         var email = new Mock<IEmailService>();
+        var dashboardAlerts = new Mock<IDashboardAlertService>();
+        dashboardAlerts.Setup(service => service.GetAlertsAsync(It.IsAny<CancellationToken>()))
+            .ReturnsAsync(new DashboardAlertsResponse(30, 0, [], 0, []));
         var relocationTasks = new Mock<IRelocationTaskService>();
         relocationTasks.Setup(service => service.CreateTaskAsync(
                 It.IsAny<CreateRelocationTaskRequest>(), It.IsAny<CancellationToken>()))
@@ -672,6 +690,7 @@ public sealed class AuthorizationEndpointTests
                 services.AddSingleton(settings.Object);
                 services.AddSingleton(email.Object);
                 services.AddSingleton(relocationTasks.Object);
+                services.AddSingleton(dashboardAlerts.Object);
                 services.AddSingleton(batches.Object);
                 // With realOcrSettings the production registration and OcrService are used instead of the mock.
                 if (realOcrSettings is not null)
