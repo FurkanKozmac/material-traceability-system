@@ -107,3 +107,5 @@ docker-compose.local.yml
 
 **/.local/
 **/Library/
+.vscode/
+REPO_REPORT.md
