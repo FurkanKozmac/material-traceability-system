@@ -1,4 +1,4 @@
-# DOMAIN should be the public DNS name (for example, materialtrace.is-a.dev).
+# DOMAIN should be the public DNS name (for example, your-domain.example).
 # Caddy automatically obtains and renews a public HTTPS certificate for public names.
 # The localhost default uses Caddy's local development certificate.
 {$DOMAIN:localhost} {
