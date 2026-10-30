@@ -31,6 +31,8 @@ services:
       ADMIN_PASSWORD_RESET: ${ADMIN_PASSWORD_RESET:-false}
       DEMO_USER_ENABLED: ${DEMO_USER_ENABLED:-}
       DEMO_DATA_ENABLED: ${DEMO_DATA_ENABLED:-}
+      # OCR is optional and off by default; enable it with OCR_ENABLED=true and the "ocr" profile.
+      OCR__Enabled: ${OCR_ENABLED:-false}
       OCR__Mode: ${OCR_MODE:-Remote}
       OCR__Endpoint: ${OCR_ENDPOINT:-http://ocr-service:8080/ocr}
       OCR__SampleText: ${OCR_SAMPLE_TEXT:-}
@@ -44,14 +46,14 @@ services:
     depends_on:
       db:
         condition: service_healthy
-      ocr-service:
-        condition: service_healthy
     networks:
       mts-network:
         ipv4_address: 172.30.0.3
       ocr-network: {}
 
   ocr-service:
+    # Optional: started only with `docker compose --profile ocr up`. The backend does not wait for it.
+    profiles: ["ocr"]
     # PaddlePaddle 2.6.2 inference crashes on the current linux/arm64 runtime;
     # use its stable x86_64 CPU wheel (Docker Desktop can emulate this on ARM).
     platform: linux/amd64

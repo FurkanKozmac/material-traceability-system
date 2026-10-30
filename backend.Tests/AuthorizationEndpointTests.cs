@@ -143,6 +143,64 @@ public sealed class AuthorizationEndpointTests
     }
 
     [Fact]
+    public async Task OcrDisabled_HostStartsAndHealthEndpointReturnsOk()
+    {
+        using var host = CreateHost(realOcrSettings: new Dictionary<string, string?> { ["Ocr:Enabled"] = "false" });
+        using var client = host.GetTestClient();
+
+        using var response = await client.GetAsync("/api/health");
+
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+    }
+
+    [Fact]
+    public async Task OcrDisabled_ScanLabelReturnsServiceUnavailableWithMeaningfulJson()
+    {
+        using var host = CreateHost(realOcrSettings: new Dictionary<string, string?> { ["Ocr:Enabled"] = "false" });
+        using var client = host.GetTestClient();
+        using var content = CreateMultipartImageContent();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/batches/scan-label") { Content = content };
+        request.Headers.Add("X-Test-Roles", "Operator");
+
+        using var response = await client.SendAsync(request);
+        var body = await response.Content.ReadAsStringAsync();
+        using var payload = JsonDocument.Parse(body);
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("OCR_DISABLED", payload.RootElement.GetProperty("errorCode").GetString());
+        Assert.Contains("kapalı", payload.RootElement.GetProperty("message").GetString());
+        Assert.DoesNotContain("   at ", body);
+        Assert.DoesNotContain("Exception", body);
+    }
+
+    [Fact]
+    public async Task OcrUnreachable_ScanLabelFailsFastWithServiceUnavailable()
+    {
+        // Nothing listens on the discard port, so the connection is refused (or times out after 1 s).
+        using var host = CreateHost(realOcrSettings: new Dictionary<string, string?>
+        {
+            ["Ocr:Enabled"] = "true",
+            ["Ocr:Mode"] = "Remote",
+            ["Ocr:Endpoint"] = "http://127.0.0.1:9/ocr",
+            ["Ocr:ConnectTimeoutSeconds"] = "1",
+            ["Ocr:TimeoutSeconds"] = "5"
+        }, environmentName: "Testing");
+        using var client = host.GetTestClient();
+        using var content = CreateMultipartImageContent();
+        using var request = new HttpRequestMessage(HttpMethod.Post, "/api/batches/scan-label") { Content = content };
+        request.Headers.Add("X-Test-Roles", "Operator");
+        var stopwatch = System.Diagnostics.Stopwatch.StartNew();
+
+        using var response = await client.SendAsync(request);
+        using var payload = JsonDocument.Parse(await response.Content.ReadAsStringAsync());
+
+        Assert.Equal(HttpStatusCode.ServiceUnavailable, response.StatusCode);
+        Assert.Equal("OCR_UNAVAILABLE", payload.RootElement.GetProperty("errorCode").GetString());
+        Assert.Contains("ulaşılamadı", payload.RootElement.GetProperty("message").GetString());
+        Assert.True(stopwatch.Elapsed < TimeSpan.FromSeconds(5), $"OCR failure took {stopwatch.Elapsed}.");
+    }
+
+    [Fact]
     public async Task Operator_CanCreateBatch()
     {
         using var host = CreateHost();
@@ -514,7 +572,10 @@ public sealed class AuthorizationEndpointTests
             ["Jwt:Audience"] = "backend-tests"
         }).Build();
 
-    private static IHost CreateHost(Mock<IChemicalExcelService>? chemicalExcelOverride = null)
+    private static IHost CreateHost(
+        Mock<IChemicalExcelService>? chemicalExcelOverride = null,
+        IReadOnlyDictionary<string, string?>? realOcrSettings = null,
+        string? environmentName = null)
     {
         var chemical = new Mock<IChemicalService>();
         chemical.Setup(service => service.DeleteAsync(It.IsAny<long>(), It.IsAny<CancellationToken>()))
@@ -572,10 +633,19 @@ public sealed class AuthorizationEndpointTests
             .ReturnsAsync(new SafetyAnswerResponse(
                 "CHEM-1", "How should it be stored?", "Store it safely.", "Storage", true));
 
-        return new HostBuilder()
+        var hostBuilder = new HostBuilder();
+        if (environmentName is not null)
+            hostBuilder.UseEnvironment(environmentName);
+
+        return hostBuilder
+            .ConfigureAppConfiguration(configuration =>
+            {
+                if (realOcrSettings is not null)
+                    configuration.AddInMemoryCollection(realOcrSettings);
+            })
             .ConfigureWebHost(webHost => webHost
             .UseTestServer()
-            .ConfigureServices(services =>
+            .ConfigureServices((context, services) =>
             {
                 services.AddRouting();
                 services.AddMtsAuthentication(TestAuthenticationConfiguration());
@@ -603,7 +673,11 @@ public sealed class AuthorizationEndpointTests
                 services.AddSingleton(email.Object);
                 services.AddSingleton(relocationTasks.Object);
                 services.AddSingleton(batches.Object);
-                services.AddSingleton(ocr.Object);
+                // With realOcrSettings the production registration and OcrService are used instead of the mock.
+                if (realOcrSettings is not null)
+                    services.AddMtsOcr(context.Configuration);
+                else
+                    services.AddSingleton(ocr.Object);
                 services.AddSingleton(labelParser.Object);
                 services.AddSingleton(auth.Object);
                 services.AddSingleton(users.Object);

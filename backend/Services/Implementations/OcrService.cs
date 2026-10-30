@@ -18,6 +18,13 @@ public sealed class OcrService(
 
     public async Task<string> ExtractTextAsync(Stream image, string contentType, CancellationToken ct = default)
     {
+        if (!configuration.GetValue("Ocr:Enabled", true))
+        {
+            throw new OcrServiceUnavailableException(
+                "Etiket OCR özelliği bu kurulumda kapalı. Parti bilgilerini elle girin.",
+                errorCode: OcrServiceUnavailableException.DisabledCode);
+        }
+
         var mode = configuration["Ocr:Mode"];
         if (string.IsNullOrWhiteSpace(mode))
             mode = environment.IsDevelopment() ? "Sample" : "Remote";

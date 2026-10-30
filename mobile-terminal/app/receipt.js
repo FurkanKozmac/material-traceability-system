@@ -4,6 +4,7 @@ import { CameraView, useCameraPermissions } from 'expo-camera';
 import { useFocusEffect, useRouter } from 'expo-router';
 import { createBatch, getLabelPreviewUrl, listChemicals, scanBatchLabel } from '../src/services/api';
 import { useLanguage } from '../src/context/LanguageContext';
+import { ocrErrorKey } from '../src/domain/ocrErrors';
 
 const asDateInput = (value) => value ? new Date(value).toISOString().slice(0, 10) : '';
 
@@ -60,7 +61,7 @@ export default function ReceiptScreen() {
       if (found) setChemicalId(String(found.id));
       Alert.alert(t('receiptOcrComplete'), found ? t('receiptReviewFields') : t('receiptChemicalManual'));
     } catch (error) {
-      Alert.alert(t('receiptError'), t('receiptOcrFailed'));
+      Alert.alert(t('receiptError'), t(ocrErrorKey(error.code)));
     } finally {
       setLoading(false);
     }

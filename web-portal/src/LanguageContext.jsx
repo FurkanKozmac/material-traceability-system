@@ -97,6 +97,8 @@ const translations = {
       EMPTY_EXCEL_FILE: 'Excel dosyasında içe aktarılacak veri satırı bulunamadı.',
       IMPORT_ROW_LIMIT_EXCEEDED: 'Bir seferde en fazla 1.000 satır içe aktarılabilir.',
       IMPORT_CONFLICT: 'İçe aktarma sırasında bir kimyasal kodu başka bir işlem tarafından eklendi. Lütfen tekrar deneyin.',
+      OCR_DISABLED: 'Etiket tarama (OCR) bu ortamda kapalı. Parti bilgilerini elle girin.',
+      OCR_UNAVAILABLE: 'OCR servisine şu an ulaşılamıyor. Daha sonra tekrar deneyin veya bilgileri elle girin.',
     },
     apiMessages: {
       invalidCredentials: 'Kullanıcı adı veya parola hatalı.',
@@ -492,6 +494,8 @@ const translations = {
       EMPTY_EXCEL_FILE: 'No data rows were found in the Excel file.',
       IMPORT_ROW_LIMIT_EXCEEDED: 'At most 1,000 rows can be imported at once.',
       IMPORT_CONFLICT: 'A chemical code was added by another operation during the import. Please try again.',
+      OCR_DISABLED: 'Label scanning (OCR) is turned off in this environment. Enter the batch details manually.',
+      OCR_UNAVAILABLE: 'The OCR service is not reachable right now. Try again later or enter the details manually.',
     },
     apiMessages: {
       invalidCredentials: 'Invalid username or password.',

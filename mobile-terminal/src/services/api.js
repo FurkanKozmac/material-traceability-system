@@ -172,7 +172,8 @@ export const scanBatchLabel = async (image) => {
   const response = await fetchWithAuth(`${baseUrl}/api/batches/scan-label`, {
     method: 'POST', headers: await getHeaders(false), body: form,
   });
-  if (!response.ok) throw new Error(await extractErrorMessage(response, 'Etiket OCR ile okunamadı'));
+  // Keep the errorCode (OCR_DISABLED / OCR_UNAVAILABLE) so the screen can show a specific message.
+  if (!response.ok) throw await extractApiError(response, 'Etiket OCR ile okunamadı');
   return readJsonResponse(response, 'Etiket OCR ile okunamadı');
 };
 
