@@ -103,6 +103,7 @@ npm start
 - **🧪 Fictional Demo Inventory:** `DEMO_DATA_ENABLED` seeds a repeatable set of fictional chemicals, batches, stock units, rack addresses, and relocation tasks. It defaults on in Development and off in Production.
 - **📦 Batch-First QR Scanning:** Mandatory scanning of a Batch QR (`BAT-{BatchNo}`) before consuming individual units, enforced by the consume API as well as the mobile UI, to enforce strict lot governance.
 - **📨 Asynchronous Critical Stock Alerts:** Each chemical has a `MinStockThreshold` field (default `10`). When consuming or deleting an in-stock unit takes the chemical’s total active-unit count below the threshold, the backend queues a low-stock event and a background worker sends a formatted HTML email. A relocation checks stock but does not reduce the chemical’s total stock. Administrators can set the notification recipient and enable or disable alerts in **Settings → Critical Stock and Notifications**.
+- **📊 Dashboard Alerts:** The dashboard lists in-stock batches that expire within 30 days and chemicals whose active-unit count is below `MinStockThreshold` (`GET /api/dashboard/alerts`). Each list shows at most 10 rows together with the total (for example `10 / 14`). The low-stock count includes units that are still in stock even if their batch has expired, matching the email alert.
 - **🏷️ Configurable QR & Code 128 Labels:** Administrators can choose the default label format in **Settings → Label Format Preference**. QR codes are the default; Code 128 is also available. The backend generates PNG label previews using cross-platform libraries, including in Linux Docker deployments.
 - **📱 Multi-format Mobile Scanning:** The mobile terminal camera reads both QR codes and Code 128 barcodes. Existing payloads remain unchanged: batch labels use `BAT-{BatchNo}`, and demo unit labels use `UNIT-DEMO-UNIT-###`. Units created by the batch workflow use `UNIT-{BatchNo}-{index:D3}`; manually created units retain their stored barcode value.
 - **🔄 Dual-code Relocation Tasks:** Relocation tasks planned on the web dashboard require warehouse operators to scan both the physical Unit code and the target Address QR (`ADR-{Code}`) on the mobile terminal.
@@ -204,9 +205,11 @@ Consume example:
 
 - Batch (consume flow): `BAT-DEMO-BAT-001`
 - Unit (consume flow): `UNIT-DEMO-UNIT-001`
-- Near-expiry batch example: `BAT-DEMO-BAT-002` (expires 10 days after seeding)
+- Near-expiry batch example: `BAT-DEMO-BAT-002` (expires 10 days after seeding; listed under the dashboard's expiring-soon panel)
 
 Consume için birimin kendi batch'i okutulmalı (BATCH_MISMATCH). For consume, the unit's own batch must be scanned (BATCH_MISMATCH).
+
+The demo seed gives each chemical its own threshold, so the dashboard's low-stock panel starts with two chemicals below threshold (`DEMO-CHM-03`, `DEMO-CHM-10`) and one out of stock (`DEMO-CHM-04`). `DEMO-CHM-01` starts exactly at its threshold (3 units); consuming `UNIT-DEMO-UNIT-001` moves it below and queues a low-stock email (skipped with a single warning while `SMTP_HOST` is blank). Thresholds are written only when a demo chemical is first created; an existing demo database keeps its old values until it is reset.
 
 Relocation example (create a relocation task first):
 
@@ -288,7 +291,7 @@ Unless marked public, API endpoints require an authenticated access token. **Adm
 | `/api/settings/barcode-format`, `/api/settings/notifications` | GET | Admin, Operator |
 | `/api/settings/barcode-format`, `/api/settings/notifications`, `/api/settings/test-alert-email` | PUT, PUT, POST | Admin |
 | `/api/labels/preview` | GET | Admin, Operator |
-| `/api/dashboard/aggregate`, `/api/dashboard/pending`, `/api/dashboard/recent-consumption` | GET | Admin, Operator |
+| `/api/dashboard/aggregate`, `/api/dashboard/pending`, `/api/dashboard/recent-consumption`, `/api/dashboard/alerts` | GET | Admin, Operator |
 | `/api/warehouses` | GET | Admin, Operator |
 | `/api/shops` | GET | Admin, Operator |
 | `/api/types` | GET | Admin, Operator |
