@@ -147,6 +147,26 @@ The Compose deployment runs an open-source PaddleOCR (PP-OCRv4) FastAPI service 
 
 In Development outside Compose, `Ocr:Mode=Sample` (configured in `appsettings.Development.json`) remains available for parser/UI tests and returns fixture text without inspecting the uploaded image. Compose explicitly uses `OCR_MODE=Remote` and the local OCR service. If the service is unavailable or returns invalid output, scan returns HTTP 503 with an OCR provider message. No external OCR API or API key is needed by the default deployment.
 
+### İçe aktarma (Chemical Excel import)
+
+Admin-only. The **Chemicals** page has *Download template* and *Bulk import* buttons, which are visible only to Admins.
+
+```text
+GET  /api/chemicals/excel-template            → .xlsx: "Kimyasallar" sheet (headers + 1 example row) and a "Kılavuz" guide sheet
+POST /api/chemicals/bulk-import?dryRun=true   → preview only, nothing is written
+POST /api/chemicals/bulk-import               → real import (multipart field `file`)
+```
+
+- **Preview first:** the response lists total, to-add (`insertCount`), skipped, and invalid counts, a status per row (`Insert`/`Skip`/`Error`), and errors per row (row, column, message).
+- **All-or-nothing:** if any row is invalid, no row is saved and the API returns `422` with the same report. Otherwise all new rows are saved in one transaction.
+- **Existing codes are skipped:** chemicals already in the system (codes compared without case, trimmed) are reported as `Skip` and never updated. Importing the same file twice is safe.
+- **Validation:** code (≤ 50), name (≤ 200), and storage type (`GENERAL`, `SOLVENT`, `PAINT`, `FLAMMABLE`, `CORROSIVE`) are required. The threshold must be an integer from 0 to 1,000,000 (default 10). The description can be ≤ 2000 characters. Codes must not repeat within the file.
+- **File checks:** only real `.xlsx` files are accepted. The content is checked (ZIP signature plus OOXML spreadsheet content type), not just the file name. `.xlsm`/VBA projects, `.xls`, `.csv`, and renamed files are rejected. The upload is read in memory and never written to disk, and the file name is not logged.
+- **Limits** (configurable): `ExcelImport__MaxFileBytes` (2 MB), `ExcelImport__MaxRows` (1000), `ExcelImport__MaxUncompressedBytes` (50 MB total declared unpacked size) and `ExcelImport__MaxArchiveEntries` (100 entries). These two zip-bomb limits are checked from the ZIP headers only, before any entry is unpacked, and rejected with 400; .NET's `ZipArchive` never inflates an entry past its declared size, so a forged header cannot bypass them. The rate limit is 5 requests per IP per 60 s: `RateLimiting__ExcelImport__PermitLimit` / `RateLimiting__ExcelImport__WindowSeconds`. A preview plus a confirm uses 2 requests. These variables are not passed by `docker-compose.yml` by default. The web UI shows the default 2 MB / 1000 limits.
+- **Formulas:** formulas and macros are never executed; cells are read as plain text (the cached value). The inventory Excel export prefixes user-supplied text that starts with `=`, `+`, `-`, `@`, tab, or CR with `'` to prevent formula injection.
+
+**Behavior changes compared with the first version of bulk import:** a partial import (valid rows saved, invalid rows reported) is now **all-or-nothing**. A code that already exists is now **skipped** instead of reported as an error. The template is now **Admin-only** (it was available to Operators). The limits went from 10 MB / 10,000 rows to **2 MB / 1000 rows**. The response replaces `successCount` with `dryRun`, `committed`, `insertCount`, `skippedCount`, and `rows`.
+
 ---
 
 ## Live Demo
@@ -225,6 +245,9 @@ Unless marked public, API endpoints require an authenticated access token. **Adm
 | `/api/safetyassistant/ask` | POST | Public |
 | `/api/chemicals`, `/api/chemicals/{id}` | GET | Admin, Operator |
 | `/api/chemicals`, `/api/chemicals/{id}` | POST, PUT, DELETE | Admin |
+| `/api/chemicals/excel-template` | GET | Admin |
+| `/api/chemicals/bulk-import` (`?dryRun=true` optional) | POST | Admin; IP rate limited |
+| `/api/inventory/export-excel` | GET | Admin, Operator |
 | `/api/batches`, `/api/batches/{id}`, `/api/batches/{id}/units`, `/api/batches/barcode/{barcode}` | GET | Admin, Operator |
 | `/api/batches` | POST | Admin, Operator |
 | `/api/batches/scan-label` | POST | Admin, Operator |
