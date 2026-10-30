@@ -1,20 +1,36 @@
 using System.Net;
 using backend.Common.Events;
 using backend.Data;
+using backend.Services.Implementations.Notifications;
 using backend.Services.Interfaces;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 
 namespace backend.Services.Implementations;
 
 public sealed class LowStockAlertBackgroundService(
     ILowStockChannel channel,
     IServiceScopeFactory scopeFactory,
+    IOptions<SmtpOptions> smtpOptions,
     ILogger<LowStockAlertBackgroundService> logger) : BackgroundService
 {
+    private bool _smtpSkipLogged;
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         await foreach (var alert in channel.ReadAllAsync(stoppingToken))
         {
+            if (!smtpOptions.Value.IsConfigured)
+            {
+                // Without a relay every send would fail; log once and stay quiet afterwards.
+                if (!_smtpSkipLogged)
+                {
+                    logger.LogWarning("SMTP yapılandırılmamış, düşük stok e-postası atlandı. Sonraki uyarılar sessizce atlanacak.");
+                    _smtpSkipLogged = true;
+                }
+                continue;
+            }
+
             try
             {
                 await using var scope = scopeFactory.CreateAsyncScope();

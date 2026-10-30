@@ -39,7 +39,8 @@ services:
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-}
       Jwt__Issuer: ${JWT_ISSUER:-MaterialTraceabilitySystem}
       Jwt__Audience: ${JWT_AUDIENCE:-MtsClients}
-      Smtp__Host: ${SMTP_HOST:-localhost}
+      # Blank SMTP_HOST disables email (low-stock alerts are skipped, the test email returns 503).
+      Smtp__Host: ${SMTP_HOST:-}
       Smtp__Port: ${SMTP_PORT:-1025}
       RateLimiting__Login__PermitLimit: ${RateLimiting__Login__PermitLimit:-10}
       RateLimiting__Login__WindowSeconds: ${RateLimiting__Login__WindowSeconds:-60}

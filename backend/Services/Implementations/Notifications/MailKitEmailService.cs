@@ -9,6 +9,9 @@ public sealed class MailKitEmailService(IOptions<SmtpOptions> options, IHostEnvi
 {
     public async Task SendEmailAsync(string to, string subject, string htmlBody, CancellationToken ct = default)
     {
+        if (!options.Value.IsConfigured)
+            throw new InvalidOperationException("SMTP yapılandırılmamış (Smtp:Host boş).");
+
         var message = new MimeMessage();
         message.From.Add(new MailboxAddress(options.Value.SenderName, options.Value.SenderEmail));
         message.To.Add(MailboxAddress.Parse(to));
